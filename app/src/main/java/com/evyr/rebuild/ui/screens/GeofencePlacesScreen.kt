@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -41,6 +43,13 @@ import com.google.android.gms.location.LocationServices
  * (handled earlier in PermissionFlowScreen); if not granted, shows a message instead
  * of crashing.
  */
+/** Radius bounds for a geofence place. The floor is 50m rather than 25m
+ *  because GPS accuracy alone is 20-50m outdoors -- a smaller circle is
+ *  guaranteed to produce phantom entries and exits. */
+private const val RADIUS_MIN_M = 50
+private const val RADIUS_MAX_M = 2000
+private const val RADIUS_STEP_M = 25
+
 @Composable
 fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -189,7 +198,7 @@ fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                                 label = effectiveLabel,
                                 latitude = loc.latitude,
                                 longitude = loc.longitude,
-                                radiusMeters = 100f
+                                radiusMeters = RADIUS_MIN_M.toFloat() * 3f  // 150m
                             )
                             // draft.id is 0 here -- Room only assigns the real id on
                             // insert. Registering the geofence with the stale id=0
@@ -273,26 +282,50 @@ fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         fontSize = 12.sp
                     )
                 }
+                // Typed number with steppers, not a slider. A slider spanning
+                // 25-1000m across a phone is roughly 2.5m per pixel, so landing
+                // on a specific value is guesswork -- and radius is exactly the
+                // setting you want to be precise about.
+                var radiusText by remember(place.id) { mutableStateOf(pendingRadius.toInt().toString()) }
+                fun applyRadius(meters: Int) {
+                    val clamped = meters.coerceIn(RADIUS_MIN_M, RADIUS_MAX_M)
+                    pendingRadius = clamped.toFloat()
+                    radiusText = clamped.toString()
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("25m", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp)
-                    Slider(
-                        value = pendingRadius,
-                        valueRange = 25f..1000f,
-                        onValueChange = { pendingRadius = it },
-                        modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
-                        colors = SliderDefaults.colors(
-                            thumbColor = NervOrange,
-                            activeTrackColor = NervOrange,
-                            inactiveTrackColor = NervPanelBorder
-                        )
+                    TextButton(onClick = { applyRadius(pendingRadius.toInt() - RADIUS_STEP_M) }) {
+                        Text("\u2212", fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 20.sp)
+                    }
+                    OutlinedTextField(
+                        value = radiusText,
+                        onValueChange = { raw ->
+                            val digits = raw.filter(Char::isDigit).take(4)
+                            radiusText = digits
+                            // Only push a valid in-range number through to the map;
+                            // an empty or out-of-range field stays editable rather
+                            // than snapping under you mid-type.
+                            digits.toIntOrNull()?.takeIf { it in RADIUS_MIN_M..RADIUS_MAX_M }?.let {
+                                pendingRadius = it.toFloat()
+                            }
+                        },
+                        label = { Text("Radius (m)", fontFamily = TerminalFontFamily) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = rebuildTextFieldColors(),
+                        modifier = Modifier.weight(1f)
                     )
-                    Text("1000m", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp)
+                    TextButton(onClick = { applyRadius(pendingRadius.toInt() + RADIUS_STEP_M) }) {
+                        Text("+", fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 20.sp)
+                    }
                 }
                 Text(
-                    "Slider for quick radius changes, or drag the pin/circle edge on the map below.",
+                    "$RADIUS_MIN_M-${RADIUS_MAX_M}m. GPS is only good to 20-50m outdoors and worse " +
+                        "indoors, so anything under ~100m will report crossings you didn't make. " +
+                        "You can also drag the pin or circle edge on the map.",
                     fontFamily = TerminalFontFamily,
                     color = NervDim,
                     fontSize = 10.sp,
@@ -306,6 +339,7 @@ fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         pendingLat = lat
                         pendingLng = lng
                         pendingRadius = radius
+                        radiusText = radius.toInt().toString()
                     },
                     modifier = Modifier.weight(1f)
                 )

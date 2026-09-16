@@ -299,7 +299,7 @@ data class GeofencePlace(
     val label: String,
     val latitude: Double,
     val longitude: Double,
-    val radiusMeters: Float = 100f,
+    val radiusMeters: Float = 150f,
     val notifyOnArrival: Boolean = true,
     val notifyOnDeparture: Boolean = true
 )
