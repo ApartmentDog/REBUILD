@@ -368,6 +368,10 @@ class AppRepository(private val db: RebuildDatabase) {
 
     suspend fun deleteReminder(reminder: Reminder) = db.reminderDao().delete(reminder)
 
+    /** Reminders that fire on entering or leaving a given place. */
+    suspend fun remindersForPlace(placeId: Long, trigger: ReminderTrigger): List<Reminder> =
+        db.reminderDao().getForPlace(placeId, trigger)
+
     /** Reminders left pointing at a directive that no longer exists. */
     suspend fun orphanedReminders(): List<Reminder> = db.reminderDao().getOrphaned()
 

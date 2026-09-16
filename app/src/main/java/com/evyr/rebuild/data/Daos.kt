@@ -210,6 +210,9 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE directiveId = :directiveId")
     suspend fun getForDirective(directiveId: Long): List<Reminder>
 
+    @Query("SELECT * FROM reminders WHERE placeId = :placeId AND triggerType = :trigger")
+    suspend fun getForPlace(placeId: Long, trigger: ReminderTrigger): List<Reminder>
+
     /** Reminders whose directive no longer exists. There's no foreign key on
      *  directiveId, so deleting a directive leaves its reminders behind and
      *  they keep firing with nothing to name them. */

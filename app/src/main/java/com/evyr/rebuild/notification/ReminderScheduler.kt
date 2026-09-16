@@ -53,6 +53,13 @@ object ReminderScheduler {
             cancel(context, reminder)
             return
         }
+        // ARRIVAL/DEPARTURE reminders are fired by GeofenceBroadcastReceiver when
+        // the transition happens. There's no clock time to arm.
+        if (reminder.triggerType != com.evyr.rebuild.data.ReminderTrigger.TIME) {
+            cancel(context, reminder)
+            return
+        }
+
         // CALENDAR reminders don't use AlarmManager at all -- the event itself
         // (with its own CalendarContract.Reminders alert) is what notifies.
         // Writing/updating that event is handled by CalendarReminderWriter,
@@ -104,6 +111,17 @@ object ReminderScheduler {
         }
         val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
         alarmManager.cancel(pendingIntentFor(context, reminder))
+    }
+
+    /**
+     * Whether a reminder's day-of-week filter includes today. A null or blank
+     * days string means every day, which is how reminders behaved before the
+     * filter existed -- so pre-existing ones keep working untouched.
+     */
+    fun isDueToday(reminder: com.evyr.rebuild.data.Reminder): Boolean {
+        val days = reminder.days?.takeIf { it.isNotBlank() } ?: return true
+        val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
+        return days.split(",").mapNotNull { it.trim().toIntOrNull() }.contains(today)
     }
 
     /** Re-arms every enabled reminder -- called after boot (alarms don't survive

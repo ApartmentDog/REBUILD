@@ -2,6 +2,7 @@ package com.evyr.rebuild.location
 
 import android.content.BroadcastReceiver
 import android.content.Context
+import kotlinx.coroutines.launch
 import android.content.Intent
 import androidx.work.Data
 import androidx.work.OneTimeWorkRequestBuilder
@@ -73,15 +74,42 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 return@forEach
             }
 
-            val debounceKey = "last_${transition}_${geofence.requestId}"
-            if (now - prefs.getLong(debounceKey, 0) < DEBOUNCE_WINDOW_MS) {
-                GeofenceDebugLog.log(context, "place $placeId ${transitionName(transition)} suppressed by debounce")
+            // Debounce is keyed per PLACE, not per place+transition. The old key
+            // included the transition type, which gave ENTER and EXIT separate
+            // windows -- so an EXIT could be immediately followed by an ENTER and
+            // neither suppressed the other. That is the only failure mode that
+            // actually occurs: standing still indoors, GPS drifts outside the
+            // radius and back, and the app reports leaving and arriving minutes
+            // apart without anyone moving.
+            val entering = transition == Geofence.GEOFENCE_TRANSITION_ENTER
+            val knownInside = GeofencePresence.isInside(context, placeId)
+            val lastTransitionAt = prefs.getLong("last_transition_$placeId", 0)
+
+            // Redundant: the OS is telling us something we already believe.
+            if (knownInside != null && knownInside == entering) {
+                GeofenceDebugLog.log(
+                    context,
+                    "place $placeId ${transitionName(transition)} ignored — already ${if (entering) "inside" else "outside"}"
+                )
                 return@forEach
             }
-            prefs.edit().putLong(debounceKey, now).apply()
+
+            // Bounce: a real crossing this soon after the last one means GPS
+            // jitter, not travel. Nobody leaves and returns in a few minutes.
+            if (now - lastTransitionAt < DEBOUNCE_WINDOW_MS) {
+                val agoMin = (now - lastTransitionAt) / 60000
+                GeofenceDebugLog.log(
+                    context,
+                    "place $placeId ${transitionName(transition)} suppressed — flipped ${agoMin}min after last transition (jitter)"
+                )
+                return@forEach
+            }
+            prefs.edit().putLong("last_transition_$placeId", now).apply()
 
             when (transition) {
                 Geofence.GEOFENCE_TRANSITION_EXIT -> {
+                    GeofencePresence.setInside(context, placeId, false)
+                    firePlaceReminders(context, placeId, com.evyr.rebuild.data.ReminderTrigger.DEPARTURE)
                     GeofenceDebugLog.log(context, "place $placeId EXIT — enqueuing DepartureCheckWorker")
                     val request = OneTimeWorkRequestBuilder<DepartureCheckWorker>()
                         .setInputData(
@@ -91,6 +119,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     WorkManager.getInstance(context).enqueue(request)
                 }
                 Geofence.GEOFENCE_TRANSITION_ENTER -> {
+                    GeofencePresence.setInside(context, placeId, true)
+                    firePlaceReminders(context, placeId, com.evyr.rebuild.data.ReminderTrigger.ARRIVAL)
                     GeofenceDebugLog.log(context, "place $placeId ENTER — enqueuing ArrivalNudgeWorker (+${ARRIVAL_CHECK_DELAY_MINUTES}min)")
                     val request = OneTimeWorkRequestBuilder<ArrivalNudgeWorker>()
                         .setInitialDelay(ARRIVAL_CHECK_DELAY_MINUTES, TimeUnit.MINUTES)
@@ -104,6 +134,36 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     WorkManager.getInstance(context).enqueue(request)
                 }
             }
+        }
+    }
+
+    /**
+     * Fires any reminder set to go off on arrival at / departure from this
+     * place, honouring its day-of-week filter. These never touch AlarmManager
+     * -- the geofence transition is the whole trigger.
+     */
+    private fun firePlaceReminders(
+        context: Context,
+        placeId: Long,
+        trigger: com.evyr.rebuild.data.ReminderTrigger
+    ) {
+        val appContext = context.applicationContext
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val repo = com.evyr.rebuild.data.AppRepository(
+                com.evyr.rebuild.data.RebuildDatabase.getInstance(appContext)
+            )
+            repo.remindersForPlace(placeId, trigger)
+                .filter { it.enabled && com.evyr.rebuild.notification.ReminderScheduler.isDueToday(it) }
+                .forEach { reminder ->
+                    val directive = repo.directiveById(reminder.directiveId)
+                    if (directive == null) {
+                        repo.deleteReminder(reminder)
+                        return@forEach
+                    }
+                    com.evyr.rebuild.notification.NotificationHelper(appContext)
+                        .showReminder(reminder.id, directive.title, reminder.customMessage)
+                    GeofenceDebugLog.log(appContext, "fired ${trigger.name} reminder for ${directive.title}")
+                }
         }
     }
 

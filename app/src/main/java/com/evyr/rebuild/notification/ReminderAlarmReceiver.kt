@@ -46,6 +46,35 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                     return@launch
                 }
 
+                // Day filter: not due today, so stay quiet but keep the daily
+                // alarm cycle going so it fires on the days it should.
+                if (!ReminderScheduler.isDueToday(reminder)) {
+                    ReminderScheduler.schedule(context, reminder)
+                    return@launch
+                }
+
+                // Location gate. Presence comes from geofence transitions
+                // (GeofencePresence), so it can be unknown if we've never seen
+                // one for that place. Unknown fails closed -- better a missed
+                // nudge than one that goes off in the wrong place, which is the
+                // whole reason this gate exists.
+                val condition = reminder.placeCondition
+                if (condition != com.evyr.rebuild.data.PlaceCondition.ANYWHERE) {
+                    val placeId = reminder.placeId
+                    val inside = placeId?.let {
+                        com.evyr.rebuild.location.GeofencePresence.isInside(context, it)
+                    }
+                    val satisfied = when (condition) {
+                        com.evyr.rebuild.data.PlaceCondition.AT_PLACE -> inside == true
+                        com.evyr.rebuild.data.PlaceCondition.AWAY_FROM_PLACE -> inside == false
+                        else -> true
+                    }
+                    if (!satisfied) {
+                        ReminderScheduler.schedule(context, reminder)
+                        return@launch
+                    }
+                }
+
                 // ALARM type rings via the system alarm UI itself (see
                 // ReminderScheduler.schedule) -- a notification on top would
                 // just be a redundant second popup for the same firing.

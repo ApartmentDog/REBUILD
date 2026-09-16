@@ -22,6 +22,13 @@ import com.google.android.gms.location.LocationServices
  */
 class GeofenceManager(private val context: Context) {
 
+    companion object {
+        /** How long Play Services may wait before reporting a crossing. Trades
+         *  a few minutes of lag for far fewer phantom transitions. */
+        private const val RESPONSIVENESS_MS = 5 * 60 * 1000
+    }
+
+
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
 
     /**
@@ -44,6 +51,11 @@ class GeofenceManager(private val context: Context) {
             .setCircularRegion(place.latitude, place.longitude, place.radiusMeters)
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT)
+            // Responsiveness defaults to 0 -- "report the instant anything looks
+            // different" -- which makes Play Services act on single noisy fixes
+            // and announce crossings that never happened. A few minutes of slack
+            // lets it corroborate before reporting.
+            .setNotificationResponsiveness(RESPONSIVENESS_MS)
             .build()
 
         val request = GeofencingRequest.Builder()
@@ -97,6 +109,11 @@ class GeofenceManager(private val context: Context) {
                         .setCircularRegion(place.latitude, place.longitude, place.radiusMeters)
                         .setExpirationDuration(Geofence.NEVER_EXPIRE)
                         .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT)
+                        // Responsiveness defaults to 0 -- "report the instant anything looks
+                        // different" -- which makes Play Services act on single noisy fixes
+                        // and announce crossings that never happened. A few minutes of slack
+                        // lets it corroborate before reporting.
+                        .setNotificationResponsiveness(RESPONSIVENESS_MS)
                         .build()
                 }
                 val request = GeofencingRequest.Builder()

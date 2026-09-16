@@ -30,7 +30,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         BookItem::class,
         ConfessionEntry::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -327,6 +327,18 @@ abstract class RebuildDatabase : RoomDatabase() {
             }
         }
 
+        /** Reminders gain a trigger, day-of-week filter, and place gating.
+         *  Additive: every existing reminder defaults to TIME / every day /
+         *  ANYWHERE, which is exactly how it behaved before. */
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reminders ADD COLUMN triggerType TEXT NOT NULL DEFAULT 'TIME'")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN days TEXT")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN placeId INTEGER")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN placeCondition TEXT NOT NULL DEFAULT 'ANYWHERE'")
+            }
+        }
+
         fun getInstance(context: Context): RebuildDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -334,7 +346,7 @@ abstract class RebuildDatabase : RoomDatabase() {
                     RebuildDatabase::class.java,
                     "rebuild.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .build().also { INSTANCE = it }
             }
         }

@@ -22,6 +22,18 @@ class Converters {
     fun stringToSessionType(value: String): SessionType = SessionType.valueOf(value)
 
     @TypeConverter
+    fun reminderTriggerToString(t: ReminderTrigger): String = t.name
+
+    @TypeConverter
+    fun stringToReminderTrigger(value: String): ReminderTrigger = ReminderTrigger.valueOf(value)
+
+    @TypeConverter
+    fun placeConditionToString(c: PlaceCondition): String = c.name
+
+    @TypeConverter
+    fun stringToPlaceCondition(value: String): PlaceCondition = PlaceCondition.valueOf(value)
+
+    @TypeConverter
     fun attachmentKindToString(kind: AttachmentKind): String = kind.name
 
     @TypeConverter

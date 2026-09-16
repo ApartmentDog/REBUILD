@@ -190,6 +190,24 @@ data class SessionLog(
 enum class ReminderType { NOTIFICATION, ALARM, CALENDAR }
 
 /**
+ * What sets a reminder off. TIME is the clock-based original. ARRIVAL and
+ * DEPARTURE hang off a geofence place instead and ignore hour/minute entirely
+ * -- "when I get home", not "at 6pm and hope I'm home".
+ */
+@Serializable
+enum class ReminderTrigger { TIME, ARRIVAL, DEPARTURE }
+
+/**
+ * For TIME reminders, an optional location gate. AT_PLACE fires only when
+ * you're inside the place, AWAY_FROM_PLACE only when you're not -- so a
+ * "put the keys away" nudge can stay quiet while you're at work. Presence
+ * comes from the geofence ENTER/EXIT events the app already receives
+ * (GeofencePresence), not a fresh location fix at fire time.
+ */
+@Serializable
+enum class PlaceCondition { ANYWHERE, AT_PLACE, AWAY_FROM_PLACE }
+
+/**
  * A custom scheduled reminder attached to a directive -- a specific time of day
  * plus an optional custom message, separate from the directive's own due-today
  * logic. A directive can have zero or more reminders; nothing about Sync Ratio
@@ -215,7 +233,16 @@ data class Reminder(
     val calendarRecurrenceIntervalDays: Int? = null,  // INTERVAL, every N days
     // CalendarContract event/calendar IDs for the event this reminder owns,
     // so edits/deletes update the same event instead of creating duplicates.
-    val calendarEventId: Long? = null
+    val calendarEventId: Long? = null,
+
+    val triggerType: ReminderTrigger = ReminderTrigger.TIME,
+    // Comma-joined Calendar.DAY_OF_WEEK values (1=Sun..7=Sat). Null or blank
+    // means every day, which is how every pre-existing reminder behaved.
+    val days: String? = null,
+    // The geofence place this reminder cares about. Required for ARRIVAL and
+    // DEPARTURE; for TIME it's only read when placeCondition isn't ANYWHERE.
+    val placeId: Long? = null,
+    val placeCondition: PlaceCondition = PlaceCondition.ANYWHERE
 )
 
 /**
