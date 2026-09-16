@@ -1,0 +1,75 @@
+name: Build Debug APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Regenerate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.13
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace --no-build-cache --no-configuration-cache
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rebuild-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Rename APK with commit + timestamp
+        run: |
+          STAMP=$(date +%Y%m%d-%H%M%S)
+          SHA=$(git rev-parse --short HEAD)
+          # Filename kept constant (rebuild-latest.apk) rather than including the
+          # timestamp/sha in the name that's actually uploaded: action-gh-release
+          # updates an existing release's assets by filename, so a constant name
+          # means each run replaces the previous APK instead of piling up a new
+          # file on the "latest" release every single push. STAMP/SHA still go
+          # into the release title/body for a human-readable version history.
+          cp app/build/outputs/apk/debug/app-debug.apk "rebuild-latest.apk"
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
+
+      # Publishes to the repo's Releases tab instead of an Actions artifact --
+      # artifacts require finding the specific run, only show up reliably in a
+      # browser (not the GitHub mobile app, confirmed the hard way), and expire.
+      # A release is one stable, bookmarkable page with a direct APK download
+      # link that always exists. Reusing tag_name "latest" on every run updates
+      # that same release in place (confirmed: this is documented, supported
+      # behavior for this action, not an assumption) rather than failing on a
+      # duplicate tag, so bookmarking the one release URL always gets the
+      # current build.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "REBUILD ${{ env.STAMP }} (${{ env.SHA }})"
+          body: "Automatic build from commit ${{ env.SHA }}."
+          files: rebuild-latest.apk
+          make_latest: true

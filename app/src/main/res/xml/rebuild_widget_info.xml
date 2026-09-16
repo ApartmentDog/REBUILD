@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  updatePeriodMillis is 30 minutes: the Android minimum is 30 min for widget
+  self-updates, and anything smaller is silently ignored. Real freshness comes
+  from explicit refreshes after a completion or an NFC scan, not from polling.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_rebuild"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

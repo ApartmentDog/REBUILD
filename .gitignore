@@ -1,0 +1,21 @@
+# Gradle / Android build output
+.gradle/
+build/
+app/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Keys and secrets -- keystore/debug.keystore is deliberately committed (it's
+# the standard Android debug key, so CI builds sign identically and install
+# over each other). Any real release keystore must NOT be.
+*.jks
+keystore/release.keystore
+keystore.properties
+secrets.properties

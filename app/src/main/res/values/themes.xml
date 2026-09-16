@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Rebuild" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/nerv_background</item>
+        <item name="android:statusBarColor">@color/nerv_background</item>
+    </style>
+
+    <!--
+      Used by NfcScanActivity. Fully transparent and non-animated so tapping a tag
+      with the app closed records the scan without visibly opening anything - the
+      activity finishes immediately and only a toast is shown.
+    -->
+    <style name="Theme.Rebuild.Invisible" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+</resources>
