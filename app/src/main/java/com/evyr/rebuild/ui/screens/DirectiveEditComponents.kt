@@ -301,6 +301,11 @@ fun ReminderManagementDialog(
     var calRecurrence by remember { mutableStateOf(RecurrenceType.NONE) }
     var calSelectedDays by remember { mutableStateOf(setOf<Int>()) }
     var calIntervalText by remember { mutableStateOf("") }
+    var triggerType by remember { mutableStateOf(com.evyr.rebuild.data.ReminderTrigger.TIME) }
+    var selectedDays by remember { mutableStateOf(setOf<Int>()) }
+    var placeCondition by remember { mutableStateOf(com.evyr.rebuild.data.PlaceCondition.ANYWHERE) }
+    var selectedPlaceId by remember { mutableStateOf<Long?>(null) }
+    val places by viewModel.geofencePlaces.collectAsState()
 
     // Pending save, held until calendar permission is granted (or denied).
     var pendingCalendarSave by remember { mutableStateOf<Reminder?>(null) }
@@ -372,16 +377,44 @@ fun ReminderManagementDialog(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                val placeLabel = r.placeId?.let { id -> places.find { it.id == id }?.label }
                                 Text(
-                                    "%02d:%02d".format(r.hour, r.minute),
+                                    when (r.triggerType) {
+                                        com.evyr.rebuild.data.ReminderTrigger.ARRIVAL ->
+                                            "Arriving ${placeLabel ?: "?"}"
+                                        com.evyr.rebuild.data.ReminderTrigger.DEPARTURE ->
+                                            "Leaving ${placeLabel ?: "?"}"
+                                        else -> buildString {
+                                            append("%02d:%02d".format(r.hour, r.minute))
+                                            when (r.placeCondition) {
+                                                com.evyr.rebuild.data.PlaceCondition.AT_PLACE ->
+                                                    append(" at ${placeLabel ?: "?"}")
+                                                com.evyr.rebuild.data.PlaceCondition.AWAY_FROM_PLACE ->
+                                                    append(" away from ${placeLabel ?: "?"}")
+                                                else -> {}
+                                            }
+                                        }
+                                    },
                                     fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 13.sp
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    when (r.reminderType) {
-                                        com.evyr.rebuild.data.ReminderType.NOTIFICATION -> "NOTIFY"
-                                        com.evyr.rebuild.data.ReminderType.ALARM -> "ALARM"
-                                        com.evyr.rebuild.data.ReminderType.CALENDAR -> "CALENDAR"
+                                    buildString {
+                                        append(
+                                            when (r.reminderType) {
+                                                com.evyr.rebuild.data.ReminderType.NOTIFICATION -> "NOTIFY"
+                                                com.evyr.rebuild.data.ReminderType.ALARM -> "ALARM"
+                                                com.evyr.rebuild.data.ReminderType.CALENDAR -> "CALENDAR"
+                                            }
+                                        )
+                                        // Only show days when they're actually filtered --
+                                        // "every day" is the default and adds nothing.
+                                        r.days?.takeIf { it.isNotBlank() }?.let { d ->
+                                            val names = listOf("", "SU", "MO", "TU", "WE", "TH", "FR", "SA")
+                                            val picked = d.split(",").mapNotNull { it.trim().toIntOrNull() }
+                                                .filter { it in 1..7 }.sorted().map { names[it] }
+                                            if (picked.isNotEmpty()) append("  ${picked.joinToString("/")}")
+                                        }
                                     },
                                     fontFamily = TerminalFontFamily, color = NervDim, fontSize = 8.sp, letterSpacing = 1.sp
                                 )
@@ -510,11 +543,121 @@ fun ReminderManagementDialog(
                         }
                     }
                     Spacer(Modifier.height(10.dp))
+                    Text("FIRES", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            com.evyr.rebuild.data.ReminderTrigger.TIME to "AT A TIME",
+                            com.evyr.rebuild.data.ReminderTrigger.ARRIVAL to "ON ARRIVAL",
+                            com.evyr.rebuild.data.ReminderTrigger.DEPARTURE to "ON LEAVING"
+                        ).forEach { (t, label) ->
+                            val on = triggerType == t
+                            Text(
+                                label,
+                                fontFamily = TerminalFontFamily,
+                                color = if (on) NervBackground else NervGreen,
+                                fontSize = 9.sp,
+                                modifier = Modifier
+                                    .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
+                                    .clickable { triggerType = t }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
+                    // A place is required for arrival/departure, and optional for a
+                    // timed reminder that's gated on location.
+                    val needsPlace = triggerType != com.evyr.rebuild.data.ReminderTrigger.TIME ||
+                        placeCondition != com.evyr.rebuild.data.PlaceCondition.ANYWHERE
+                    if (needsPlace) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("PLACE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(4.dp))
+                        if (places.isEmpty()) {
+                            Text(
+                                "No places saved yet — add one in Settings > Locations first.",
+                                fontFamily = TerminalFontFamily, color = NervRed, fontSize = 9.sp
+                            )
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                places.forEach { place ->
+                                    val on = selectedPlaceId == place.id
+                                    Text(
+                                        place.label.uppercase(),
+                                        fontFamily = TerminalFontFamily,
+                                        color = if (on) NervBackground else NervGreen,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier
+                                            .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
+                                            .clickable { selectedPlaceId = place.id }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (triggerType == com.evyr.rebuild.data.ReminderTrigger.TIME) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("ONLY WHEN", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(
+                                com.evyr.rebuild.data.PlaceCondition.ANYWHERE to "ANYWHERE",
+                                com.evyr.rebuild.data.PlaceCondition.AT_PLACE to "I'M THERE",
+                                com.evyr.rebuild.data.PlaceCondition.AWAY_FROM_PLACE to "I'M AWAY"
+                            ).forEach { (c, label) ->
+                                val on = placeCondition == c
+                                Text(
+                                    label,
+                                    fontFamily = TerminalFontFamily,
+                                    color = if (on) NervBackground else NervGreen,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier
+                                        .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
+                                        .clickable { placeCondition = c }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    Text("DAYS", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(1 to "S", 2 to "M", 3 to "T", 4 to "W", 5 to "T", 6 to "F", 7 to "S")
+                            .forEach { (dayNum, label) ->
+                                val on = dayNum in selectedDays
+                                Text(
+                                    label,
+                                    fontFamily = TerminalFontFamily,
+                                    color = if (on) NervBackground else NervGreen,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier
+                                        .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(4.dp))
+                                        .clickable {
+                                            selectedDays = if (on) selectedDays - dayNum else selectedDays + dayNum
+                                        }
+                                        .padding(horizontal = 9.dp, vertical = 6.dp)
+                                )
+                            }
+                    }
+                    Text(
+                        if (selectedDays.isEmpty()) "None picked = every day."
+                        else "Only on the selected days.",
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                    )
+
+                    Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { showAddForm = false }) {
                             Text("CANCEL", fontFamily = TerminalFontFamily, color = NervDim)
                         }
+                        val placeRequired = triggerType != com.evyr.rebuild.data.ReminderTrigger.TIME ||
+                            placeCondition != com.evyr.rebuild.data.PlaceCondition.ANYWHERE
                         Button(
+                            enabled = !placeRequired || selectedPlaceId != null,
                             onClick = {
                                 val newReminder = Reminder(
                                     directiveId = directive.id,
@@ -526,7 +669,16 @@ fun ReminderManagementDialog(
                                     calendarRecurrenceDays = if (reminderType == com.evyr.rebuild.data.ReminderType.CALENDAR && calRecurrence == RecurrenceType.SPECIFIC_DAYS && calSelectedDays.isNotEmpty())
                                         calSelectedDays.sorted().joinToString(",") else null,
                                     calendarRecurrenceIntervalDays = if (reminderType == com.evyr.rebuild.data.ReminderType.CALENDAR && calRecurrence == RecurrenceType.INTERVAL)
-                                        calIntervalText.toIntOrNull() else null
+                                        calIntervalText.toIntOrNull() else null,
+                                    triggerType = triggerType,
+                                    days = selectedDays.takeIf { it.isNotEmpty() }?.sorted()?.joinToString(","),
+                                    // Place matters for ARRIVAL/DEPARTURE always, and for
+                                    // TIME only when it's actually gated on location.
+                                    placeId = if (triggerType != com.evyr.rebuild.data.ReminderTrigger.TIME ||
+                                        placeCondition != com.evyr.rebuild.data.PlaceCondition.ANYWHERE
+                                    ) selectedPlaceId else null,
+                                    placeCondition = if (triggerType == com.evyr.rebuild.data.ReminderTrigger.TIME)
+                                        placeCondition else com.evyr.rebuild.data.PlaceCondition.ANYWHERE
                                 )
                                 saveReminderRouted(newReminder)
                                 message = ""
@@ -534,6 +686,10 @@ fun ReminderManagementDialog(
                                 calRecurrence = RecurrenceType.NONE
                                 calSelectedDays = setOf()
                                 calIntervalText = ""
+                                triggerType = com.evyr.rebuild.data.ReminderTrigger.TIME
+                                selectedDays = setOf()
+                                placeCondition = com.evyr.rebuild.data.PlaceCondition.ANYWHERE
+                                selectedPlaceId = null
                                 showAddForm = false
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = NervOrange, contentColor = NervBackground)
