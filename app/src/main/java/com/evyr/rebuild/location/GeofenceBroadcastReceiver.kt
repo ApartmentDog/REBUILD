@@ -30,6 +30,11 @@ import java.util.concurrent.TimeUnit
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     companion object {
+        /** Worst location error we'll act on. Beyond this the fix can't
+         *  distinguish sides of any geofence we'd realistically draw, so the
+         *  transition is noise regardless of which way it points. */
+        private const val MAX_TRUSTED_ACCURACY_M = 200f
+
         private const val ARRIVAL_CHECK_DELAY_MINUTES = 5L
         private const val DEBOUNCE_WINDOW_MS = 10 * 60 * 1000L
     }
@@ -64,6 +69,22 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val triggering = event.triggeringGeofences
         if (triggering.isNullOrEmpty()) {
             GeofenceDebugLog.log(context, "transition $transition but triggeringGeofences is empty")
+            return
+        }
+
+        // How good was the fix this transition was derived from? Play Services
+        // doesn't run GPS for geofencing while the device is idle -- it falls
+        // back to cell-tower and wifi positioning, which can be off by
+        // kilometres. A fix with 2km of error says nothing about whether you
+        // crossed a 100m boundary, but the transition arrives looking exactly
+        // like one from a 10m GPS lock. This is how a departure fires for a
+        // place you are nowhere near.
+        val fixAccuracy = event.triggeringLocation?.accuracy
+        if (fixAccuracy != null && fixAccuracy > MAX_TRUSTED_ACCURACY_M) {
+            GeofenceDebugLog.log(
+                context,
+                "transition ${transitionName(transition)} ignored — location accurate to only ${fixAccuracy.toInt()}m"
+            )
             return
         }
 
@@ -119,6 +140,15 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 return@forEach
             }
             prefs.edit().putLong("last_transition_$placeId", now).apply()
+
+            // Record what the fix looked like. When a transition still seems
+            // wrong, this is the difference between "GPS said so" and "a cell
+            // tower guessed" -- without it the log can't tell them apart.
+            GeofenceDebugLog.log(
+                context,
+                "place $placeId ${transitionName(transition)} accepted — fix accurate to " +
+                    (fixAccuracy?.let { "${it.toInt()}m" } ?: "unknown")
+            )
 
             when (transition) {
                 Geofence.GEOFENCE_TRANSITION_EXIT -> {
