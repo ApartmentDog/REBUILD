@@ -264,6 +264,63 @@ private fun StepView(step: SessionStep, stepNumber: Int, totalSteps: Int, viewMo
             }
         }
 
+        // Reference link, independent of the local video. Opening a URL avoids
+        // having to get a file onto the device at all, which is what stopped
+        // most steps from ever getting a demo attached.
+        Spacer(Modifier.height(10.dp))
+        var showUrlEditor by remember(step.id) { mutableStateOf(false) }
+        var urlDraft by remember(step.id) { mutableStateOf(step.referenceUrl.orEmpty()) }
+
+        if (showUrlEditor) {
+            OutlinedTextField(
+                value = urlDraft,
+                onValueChange = { urlDraft = it },
+                label = { Text("Reference link", fontFamily = TerminalFontFamily) },
+                placeholder = { Text("https://…", fontFamily = TerminalFontFamily) },
+                singleLine = true,
+                colors = rebuildTextFieldColors(),
+                modifier = Modifier.fillMaxWidth(0.9f)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { showUrlEditor = false; urlDraft = step.referenceUrl.orEmpty() }) {
+                    Text("CANCEL", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                }
+                TextButton(onClick = {
+                    viewModel.setSessionStepReferenceUrl(step, urlDraft.trim().ifBlank { null })
+                    showUrlEditor = false
+                }) {
+                    Text("SAVE LINK", fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 10.sp)
+                }
+            }
+        } else if (!step.referenceUrl.isNullOrBlank()) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TextButton(onClick = {
+                    // Prefix bare domains so the intent resolves instead of being
+                    // treated as an unknown scheme and silently doing nothing.
+                    val raw = step.referenceUrl.trim()
+                    val url = if (raw.startsWith("http://") || raw.startsWith("https://")) raw else "https://$raw"
+                    runCatching {
+                        ctx.startActivity(
+                            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                        )
+                    }
+                }) {
+                    Text("OPEN REFERENCE LINK", fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 11.sp)
+                }
+                TextButton(onClick = { showUrlEditor = true }) {
+                    Text("EDIT", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                }
+            }
+        } else {
+            TextButton(onClick = { showUrlEditor = true }) {
+                Text("ADD REFERENCE LINK", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
         if (step.durationSeconds > 0) {
             Text(

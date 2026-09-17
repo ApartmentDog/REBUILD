@@ -30,7 +30,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         BookItem::class,
         ConfessionEntry::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -339,6 +339,14 @@ abstract class RebuildDatabase : RoomDatabase() {
             }
         }
 
+        /** Session steps gain an optional reference URL alongside the existing
+         *  local video path. Additive; existing rows get null. */
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE session_steps ADD COLUMN referenceUrl TEXT")
+            }
+        }
+
         fun getInstance(context: Context): RebuildDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -346,7 +354,7 @@ abstract class RebuildDatabase : RoomDatabase() {
                     RebuildDatabase::class.java,
                     "rebuild.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                     .build().also { INSTANCE = it }
             }
         }

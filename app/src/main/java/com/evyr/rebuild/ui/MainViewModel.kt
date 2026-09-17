@@ -189,6 +189,10 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.logSession(type, startedAtEpochMs, stepsCompleted, stepsTotal, notes) }
     }
 
+    fun setSessionStepReferenceUrl(step: SessionStep, url: String?) {
+        viewModelScope.launch { repo.setSessionStepReferenceUrl(step, url) }
+    }
+
     fun setSessionStepReferenceVideo(step: SessionStep, path: String?) {
         viewModelScope.launch { repo.setSessionStepReferenceVideo(step, path) }
     }

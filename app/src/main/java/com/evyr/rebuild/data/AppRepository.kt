@@ -329,6 +329,10 @@ class AppRepository(private val db: RebuildDatabase) {
 
     fun observeSessionSteps(type: SessionType): Flow<List<SessionStep>> = db.sessionStepDao().observeForType(type)
 
+    suspend fun setSessionStepReferenceUrl(step: SessionStep, url: String?) {
+        db.sessionStepDao().upsert(step.copy(referenceUrl = url?.takeIf { it.isNotBlank() }))
+    }
+
     suspend fun setSessionStepReferenceVideo(step: SessionStep, path: String?) {
         db.sessionStepDao().upsert(step.copy(referenceVideoPath = path))
     }

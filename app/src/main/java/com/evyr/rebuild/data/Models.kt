@@ -159,7 +159,12 @@ data class SessionStep(
     val instructions: String,
     val durationSeconds: Int,   // 0 = untimed, user advances manually
     val sortOrder: Int = 0,
-    val referenceVideoPath: String? = null // uploaded "what this move looks like" clip, app-private storage
+    val referenceVideoPath: String? = null, // uploaded "what this move looks like" clip, app-private storage
+    // A link to demo it instead of storing a file. Saving a video off YouTube
+    // to local storage is friction that mostly stops the clip from ever being
+    // attached, so a URL you tap to open covers the common case. Independent of
+    // referenceVideoPath -- a step can have either, both, or neither.
+    val referenceUrl: String? = null
 )
 
 /**
