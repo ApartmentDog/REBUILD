@@ -85,6 +85,20 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             val knownInside = GeofencePresence.isInside(context, placeId)
             val lastTransitionAt = prefs.getLong("last_transition_$placeId", 0)
 
+            // An EXIT with no recorded arrival is not trustworthy: you can't
+            // leave somewhere you were never seen to enter. This happens when
+            // Play Services holds stale "inside" state from a phantom ENTER and
+            // only resolves it hours later -- which is how "Leaving Work" fires
+            // at half past midnight from bed. Record the correction, stay quiet.
+            if (!entering && knownInside == null) {
+                GeofencePresence.setInside(context, placeId, false, stampDeparture = false)
+                GeofenceDebugLog.log(
+                    context,
+                    "place $placeId EXIT ignored — no recorded arrival to leave from"
+                )
+                return@forEach
+            }
+
             // Redundant: the OS is telling us something we already believe.
             if (knownInside != null && knownInside == entering) {
                 GeofenceDebugLog.log(

@@ -276,8 +276,11 @@ data class NotificationPrefs(
     @PrimaryKey val id: Int = 1,
     val geofenceNudgesEnabled: Boolean = true,
     val morningSummaryEnabled: Boolean = true,
-    val quietHoursStart: Int? = null,  // 0-23, null = no quiet hours
-    val quietHoursEnd: Int? = null
+    // On by default. Every geofence path already checked quiet hours, but the
+    // feature shipped off, so the guard never ran and a phantom transition could
+    // notify at any hour. Still toggleable in Settings.
+    val quietHoursStart: Int? = 22,  // 0-23, null = no quiet hours
+    val quietHoursEnd: Int? = 7
 )
 
 /**

@@ -20,13 +20,19 @@ object GeofencePresence {
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun setInside(context: Context, placeId: Long, inside: Boolean) {
+    /**
+     * @param stampDeparture false when recording a correction rather than a real
+     *        crossing. A distrusted EXIT still tells us the state is "outside",
+     *        but treating it as a departure would reset the baseline that arrival
+     *        reminders measure against and make everything look outstanding again.
+     */
+    fun setInside(context: Context, placeId: Long, inside: Boolean, stampDeparture: Boolean = true) {
         val e = prefs(context).edit().putBoolean("place_$placeId", inside)
         // Stamp departures so an arrival reminder can tell "you already did this
         // and haven't left since" from "you left and came back, so it's live
         // again" -- coming home with the keys in hand is a new occasion even if
         // the directive is already ticked for the day.
-        if (!inside) e.putLong("left_$placeId", System.currentTimeMillis())
+        if (!inside && stampDeparture) e.putLong("left_$placeId", System.currentTimeMillis())
         e.apply()
     }
 
