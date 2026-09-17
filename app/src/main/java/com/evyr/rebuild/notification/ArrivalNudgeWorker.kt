@@ -48,7 +48,18 @@ class ArrivalNudgeWorker(
             return Result.success()
         }
 
-        val missing = repo.nfcLinkedDirectivesMissingSince(arrivalEpochMs, placeId)
+        // Count anything done since you last LEFT, not since you arrived.
+        // Arrival is now reported up to 5 minutes late (geofence responsiveness)
+        // and this worker waits another 5 on top, so by the time it runs you've
+        // usually already put things away -- and if you did it before the
+        // arrival timestamp, the old baseline counted it as still outstanding
+        // and nagged anyway. Leaving and coming back is what makes it live
+        // again, which is also what it means physically: you took the stuff out
+        // with you.
+        val baseline = com.evyr.rebuild.location.GeofencePresence
+            .lastDepartureAt(applicationContext, placeId)
+            .takeIf { it > 0 } ?: arrivalEpochMs
+        val missing = repo.nfcLinkedDirectivesMissingSince(baseline, placeId)
         com.evyr.rebuild.location.GeofenceDebugLog.log(
             applicationContext,
             "${place.label}: ${missing.size} missing NFC-linked item(s)" +

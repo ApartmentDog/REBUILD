@@ -170,6 +170,23 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         repo.deleteReminder(reminder)
                         return@forEach
                     }
+
+                    // Don't nag about something already done. Only for ARRIVAL:
+                    // completing it counts until you next leave, because walking
+                    // back in with your keys makes it live again. A DEPARTURE
+                    // reminder is about what you carry on the way out, which
+                    // having done it earlier in the day says nothing about.
+                    if (trigger == com.evyr.rebuild.data.ReminderTrigger.ARRIVAL) {
+                        val completedAt = repo.completedAtToday(reminder.directiveId)
+                        val leftAt = GeofencePresence.lastDepartureAt(appContext, placeId)
+                        if (completedAt != null && completedAt > leftAt) {
+                            GeofenceDebugLog.log(
+                                appContext,
+                                "skipped ${directive.title} — already done since last departure"
+                            )
+                            return@forEach
+                        }
+                    }
                     com.evyr.rebuild.notification.NotificationHelper(appContext)
                         .showReminder(reminder.id, directive.title, reminder.customMessage)
                     GeofenceDebugLog.log(appContext, "fired ${trigger.name} reminder for ${directive.title}")

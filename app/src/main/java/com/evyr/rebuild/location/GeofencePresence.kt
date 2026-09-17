@@ -21,8 +21,18 @@ object GeofencePresence {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun setInside(context: Context, placeId: Long, inside: Boolean) {
-        prefs(context).edit().putBoolean("place_$placeId", inside).apply()
+        val e = prefs(context).edit().putBoolean("place_$placeId", inside)
+        // Stamp departures so an arrival reminder can tell "you already did this
+        // and haven't left since" from "you left and came back, so it's live
+        // again" -- coming home with the keys in hand is a new occasion even if
+        // the directive is already ticked for the day.
+        if (!inside) e.putLong("left_$placeId", System.currentTimeMillis())
+        e.apply()
     }
+
+    /** When we last saw a departure from this place, or 0 if never. */
+    fun lastDepartureAt(context: Context, placeId: Long): Long =
+        prefs(context).getLong("left_$placeId", 0L)
 
     /** Null when we've never seen a transition for this place -- distinct from
      *  a known "outside", so callers can tell "not there" from "no idea". */
@@ -33,6 +43,6 @@ object GeofencePresence {
     }
 
     fun clear(context: Context, placeId: Long) {
-        prefs(context).edit().remove("place_$placeId").apply()
+        prefs(context).edit().remove("place_$placeId").remove("left_$placeId").apply()
     }
 }

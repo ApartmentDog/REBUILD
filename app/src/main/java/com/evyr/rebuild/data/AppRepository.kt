@@ -372,6 +372,11 @@ class AppRepository(private val db: RebuildDatabase) {
 
     suspend fun deleteReminder(reminder: Reminder) = db.reminderDao().delete(reminder)
 
+    /** When this directive was last completed today, or null if it hasn't been. */
+    suspend fun completedAtToday(directiveId: Long): Long? =
+        db.completionDao().observeForDate(todayKey()).first()
+            .find { it.directiveId == directiveId }?.completedAtEpochMs
+
     /** Reminders that fire on entering or leaving a given place. */
     suspend fun remindersForPlace(placeId: Long, trigger: ReminderTrigger): List<Reminder> =
         db.reminderDao().getForPlace(placeId, trigger)
