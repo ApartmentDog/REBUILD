@@ -467,10 +467,14 @@ fun ReminderManagementDialog(
                     Text("TYPE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(
+                        // A calendar event needs a time. "When I arrive somewhere"
+                        // isn't something CalendarContract can express, so CALENDAR
+                        // is only offered for time-based reminders.
+                        listOfNotNull(
                             com.evyr.rebuild.data.ReminderType.NOTIFICATION to "NOTIFY",
                             com.evyr.rebuild.data.ReminderType.ALARM to "ALARM",
-                            com.evyr.rebuild.data.ReminderType.CALENDAR to "CALENDAR"
+                            (com.evyr.rebuild.data.ReminderType.CALENDAR to "CALENDAR")
+                                .takeIf { triggerType == com.evyr.rebuild.data.ReminderTrigger.TIME }
                         ).forEach { (type, label) ->
                             val selected = reminderType == type
                             Text(
@@ -559,7 +563,16 @@ fun ReminderManagementDialog(
                                 fontSize = 9.sp,
                                 modifier = Modifier
                                     .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
-                                    .clickable { triggerType = t }
+                                    .clickable {
+                                        triggerType = t
+                                        // Otherwise the hidden CALENDAR choice stays
+                                        // selected and saves an unreachable combination.
+                                        if (t != com.evyr.rebuild.data.ReminderTrigger.TIME &&
+                                            reminderType == com.evyr.rebuild.data.ReminderType.CALENDAR
+                                        ) {
+                                            reminderType = com.evyr.rebuild.data.ReminderType.NOTIFICATION
+                                        }
+                                    }
                                     .padding(horizontal = 8.dp, vertical = 6.dp)
                             )
                         }

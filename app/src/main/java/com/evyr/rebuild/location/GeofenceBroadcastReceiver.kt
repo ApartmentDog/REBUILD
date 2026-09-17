@@ -152,6 +152,16 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             val repo = com.evyr.rebuild.data.AppRepository(
                 com.evyr.rebuild.data.RebuildDatabase.getInstance(appContext)
             )
+            // Quiet hours apply here but not to time-based reminders: you chose
+            // the hour on those, so silencing them would be overriding an
+            // explicit instruction. A geofence crossing picks its own moment,
+            // which is exactly what quiet hours exist to contain.
+            val prefs = repo.getNotificationPrefs()
+            if (com.evyr.rebuild.notification.isWithinQuietHours(prefs.quietHoursStart, prefs.quietHoursEnd)) {
+                GeofenceDebugLog.log(appContext, "place reminder suppressed — within quiet hours")
+                return@launch
+            }
+
             repo.remindersForPlace(placeId, trigger)
                 .filter { it.enabled && com.evyr.rebuild.notification.ReminderScheduler.isDueToday(it) }
                 .forEach { reminder ->

@@ -54,9 +54,15 @@ object ReminderScheduler {
             return
         }
         // ARRIVAL/DEPARTURE reminders are fired by GeofenceBroadcastReceiver when
-        // the transition happens. There's no clock time to arm.
+        // the transition happens. There's no clock time to arm, so just make
+        // sure no stale alarm is left over.
+        //
+        // Deliberately NOT cancel(): that treats a CALENDAR reminder as "delete
+        // its calendar event", so routing through it here meant a CALENDAR
+        // reminder switched to arrival lost its event on the next boot or app
+        // start, every time, silently.
         if (reminder.triggerType != com.evyr.rebuild.data.ReminderTrigger.TIME) {
-            cancel(context, reminder)
+            cancelAlarmOnly(context, reminder)
             return
         }
 
@@ -102,6 +108,12 @@ object ReminderScheduler {
             // the exact minute, until the user grants the exact-alarm permission.
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
         }
+    }
+
+    /** Clears any pending AlarmManager entry without touching calendar events. */
+    private fun cancelAlarmOnly(context: Context, reminder: Reminder) {
+        val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
+        alarmManager.cancel(pendingIntentFor(context, reminder))
     }
 
     fun cancel(context: Context, reminder: Reminder) {
