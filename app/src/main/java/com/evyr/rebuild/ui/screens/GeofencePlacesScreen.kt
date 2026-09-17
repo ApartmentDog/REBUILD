@@ -334,7 +334,7 @@ fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 com.evyr.rebuild.ui.components.GeofenceMapPicker(
                     initialLat = place.latitude,
                     initialLng = place.longitude,
-                    initialRadiusMeters = place.radiusMeters,
+                    radiusMeters = pendingRadius,
                     onChange = { lat, lng, radius ->
                         pendingLat = lat
                         pendingLng = lng

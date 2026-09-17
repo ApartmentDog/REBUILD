@@ -4,6 +4,7 @@ import android.graphics.Color as AndroidColor
 import android.view.MotionEvent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import org.osmdroid.config.Configuration
@@ -34,10 +35,16 @@ import kotlin.math.roundToInt
 fun GeofenceMapPicker(
     initialLat: Double,
     initialLng: Double,
-    initialRadiusMeters: Float,
+    radiusMeters: Float,
     onChange: (lat: Double, lng: Double, radiusMeters: Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // The circle is drawn inside the AndroidView factory, which Compose runs
+    // exactly once. Without a way back in, a radius typed outside the map never
+    // reached it and the circle stayed whatever size it started at. This handle
+    // lets the update block push a new radius into that closure.
+    val handle = remember { MapPickerHandle() }
+
     AndroidView(
         modifier = modifier.fillMaxSize(),
         factory = { ctx ->
@@ -55,7 +62,7 @@ fun GeofenceMapPicker(
             mapView.controller.setZoom(16.0)
 
             var center = GeoPoint(initialLat, initialLng)
-            var radiusMeters = initialRadiusMeters
+            var currentRadius = radiusMeters
             mapView.controller.setCenter(center)
 
             val marker = Marker(mapView).apply {
@@ -84,13 +91,20 @@ fun GeofenceMapPicker(
                 val points = (0..72).map { i ->
                     val angle = Math.toRadians(i * 5.0)
                     GeoPoint(
-                        center.latitude + metersToDegreesLat(radiusMeters) * kotlin.math.cos(angle),
-                        center.longitude + metersToDegreesLng(radiusMeters, center.latitude) * kotlin.math.sin(angle)
+                        center.latitude + metersToDegreesLat(currentRadius) * kotlin.math.cos(angle),
+                        center.longitude + metersToDegreesLng(currentRadius, center.latitude) * kotlin.math.sin(angle)
                     )
                 }
                 circle.points = points
             }
             redrawCircle()
+
+            handle.lastPushed = currentRadius
+            handle.setRadius = { newRadius ->
+                currentRadius = newRadius
+                redrawCircle()
+                mapView.invalidate()
+            }
 
             var dragMode = 0 // 0 = none, 1 = moving pin, 2 = resizing radius
 
@@ -103,7 +117,7 @@ fun GeofenceMapPicker(
                         MotionEvent.ACTION_DOWN -> {
                             val pinScreen = projection.toPixels(center, null)
                             val edgeGeo = GeoPoint(
-                                center.latitude + metersToDegreesLat(radiusMeters),
+                                center.latitude + metersToDegreesLat(currentRadius),
                                 center.longitude
                             )
                             val edgeScreen = projection.toPixels(edgeGeo, null)
@@ -137,7 +151,8 @@ fun GeofenceMapPicker(
                                     val dy = dLat * metersPerDegreeLat
                                     val dx = dLng * metersPerDegreeLng
                                     val newRadius = Math.hypot(dx, dy).roundToInt().coerceIn(25, 2000)
-                                    radiusMeters = newRadius.toFloat()
+                                    currentRadius = newRadius.toFloat()
+                                    handle.lastPushed = currentRadius
                                     redrawCircle()
                                     map.invalidate()
                                     return true
@@ -146,7 +161,7 @@ fun GeofenceMapPicker(
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                             if (dragMode != 0) {
-                                onChange(center.latitude, center.longitude, radiusMeters)
+                                onChange(center.latitude, center.longitude, currentRadius)
                             }
                             dragMode = 0
                         }
@@ -157,6 +172,27 @@ fun GeofenceMapPicker(
             mapView.overlays.add(touchOverlay)
 
             mapView
+        },
+        update = {
+            // Only push when the value actually differs. Dragging the circle
+            // already updates it internally and reports back up, which would
+            // otherwise bounce straight back down here as a redundant redraw
+            // mid-gesture.
+            if (handle.lastPushed != radiusMeters) {
+                handle.lastPushed = radiusMeters
+                handle.setRadius?.invoke(radiusMeters)
+            }
         }
     )
+}
+
+/**
+ * Bridge between Compose state and the osmdroid view built inside the
+ * AndroidView factory. The factory body runs once, so anything it creates --
+ * here, the circle overlay and the radius backing it -- is otherwise
+ * unreachable afterwards.
+ */
+private class MapPickerHandle {
+    var setRadius: ((Float) -> Unit)? = null
+    var lastPushed: Float? = null
 }
