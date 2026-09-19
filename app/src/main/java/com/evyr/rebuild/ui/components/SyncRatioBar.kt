@@ -87,14 +87,16 @@ fun SyncRatioBar(
             .background(EvaBackground)
             .border(3.dp, EvaOutline)
     ) {
-        // 150dp was most of a phone screen for a readout that's one number and
-        // a trace. 104 keeps the oscilloscope legible without pushing the
-        // checklist below the fold.
-        Canvas(modifier = Modifier.fillMaxWidth().height(104.dp)) {
+        // Was 150dp, then 104. The height alone wasn't the issue: the wave is
+        // centred at 42% with 30% amplitude, so it occupied 12%-72% and left a
+        // dead band between its trough and the ruler that read as a gap between
+        // this panel and the trend chart below. Shorter canvas plus a taller,
+        // lower-centred wave closes that band instead of just scaling it down.
+        Canvas(modifier = Modifier.fillMaxWidth().height(88.dp)) {
             val w = size.width
             val h = size.height
-            val midY = h * 0.42f
-            val amp = h * 0.3f
+            val midY = h * 0.44f
+            val amp = h * 0.34f
 
             // Crosshair ticks along a center horizontal axis, matching the "+"
             // markers in the reference readout.
@@ -146,7 +148,9 @@ fun SyncRatioBar(
             }
 
             // Tick-mark ruler across the bottom, numbered like the reference.
-            val rulerY = h - 14.dp.toPx()
+            // Sits 10dp off the bottom rather than 14: at the taller amplitude
+            // the 8dp ticks reached up into the wave's trough and crossed it.
+            val rulerY = h - 10.dp.toPx()
             drawLine(EvaOutline.copy(alpha = 0.6f), Offset(0f, rulerY), Offset(w, rulerY), 1.dp.toPx())
             for (i in -5..5) {
                 val x = w / 2 + (w / 2) * (i / 5f)
