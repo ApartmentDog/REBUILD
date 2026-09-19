@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evyr.rebuild.ui.theme.EvaTextDim
@@ -35,11 +37,61 @@ fun SegmentedTapBar(
     filled: Int,
     total: Int,
     modifier: Modifier = Modifier,
+    label: String? = null,
+    compact: Boolean = false,
     onTap: () -> Unit
 ) {
     val safeTotal = total.coerceAtLeast(1)
     val safeFilled = filled.coerceIn(0, safeTotal)
     val done = safeFilled >= safeTotal
+
+    if (compact) {
+        // One line per tracker: name, count, and the bar sharing a row. The
+        // roomy version stacks a card, a title, a label row and the bar at
+        // roughly 100dp each, so five trackers push everything else off screen
+        // before the actual checklist starts.
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .clickable(enabled = !done, onClick = onTap),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (label != null) {
+                Text(
+                    label.uppercase(),
+                    fontFamily = TerminalFontFamily,
+                    color = if (done) SegmentFilled else EvaTextPrimary,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(0.42f)
+                )
+            }
+            Row(
+                modifier = Modifier.weight(0.42f).height(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                repeat(safeTotal) { i ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(if (i < safeFilled) SegmentFilled else SegmentEmpty)
+                    )
+                }
+            }
+            Text(
+                "$safeFilled/$safeTotal",
+                fontFamily = TerminalFontFamily,
+                color = if (done) SegmentFilled else EvaTextDim,
+                fontSize = 10.sp,
+                maxLines = 1
+            )
+        }
+        return
+    }
 
     Column(modifier = modifier) {
         Row(

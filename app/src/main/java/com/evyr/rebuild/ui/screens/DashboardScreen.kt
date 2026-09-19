@@ -61,7 +61,7 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(EvaRed)
-                .padding(horizontal = 18.dp, vertical = 14.dp)
+                .padding(horizontal = 18.dp, vertical = 10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -114,7 +114,7 @@ fun DashboardScreen(
                     MiniLineChart(
                         values = history,
                         lineColor = EvaYellow,
-                        height = 56.dp,
+                        height = 44.dp,
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
                     // Was comparing today to the OLDEST point in the window (up to
@@ -222,27 +222,23 @@ fun DashboardScreen(
                         val dueDaily = daily.filter { viewModel.isDueToday(it) }
                         val tapTrackers = dueDaily.filter { it.requiredScans > 1 && !it.locked }
                         if (tapTrackers.isNotEmpty()) {
-                            Column(modifier = Modifier.padding(bottom = 10.dp)) {
-                                tapTrackers.forEach { d ->
-                                    com.evyr.rebuild.ui.components.EvaPanel(
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                                    ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text(
-                                                text = d.title.uppercase(),
-                                                fontFamily = TerminalFontFamily,
-                                                color = EvaYellow,
-                                                fontSize = 12.sp,
-                                                letterSpacing = 1.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Spacer(Modifier.height(8.dp))
-                                            com.evyr.rebuild.ui.components.SegmentedTapBar(
-                                                filled = scanProgress[d.id] ?: 0,
-                                                total = d.requiredScans,
-                                                onTap = { viewModel.tapProgress(d.id) }
-                                            )
-                                        }
+                            // All trackers share one panel as compact rows rather
+                            // than each getting its own card. The old layout cost
+                            // roughly 100dp apiece, so a handful of them filled the
+                            // screen before the checklist below had a chance.
+                            com.evyr.rebuild.ui.components.EvaPanel(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                    tapTrackers.forEachIndexed { i, d ->
+                                        if (i > 0) Spacer(Modifier.height(6.dp))
+                                        com.evyr.rebuild.ui.components.SegmentedTapBar(
+                                            filled = scanProgress[d.id] ?: 0,
+                                            total = d.requiredScans,
+                                            label = d.title,
+                                            compact = true,
+                                            onTap = { viewModel.tapProgress(d.id) }
+                                        )
                                     }
                                 }
                             }
@@ -357,7 +353,7 @@ private fun ZonePanel(title: String, content: @Composable ColumnScope.() -> Unit
     // the directive list needs. The `title` param is kept so call sites don't
     // change and it can be reinstated if the tabs ever move elsewhere.
     EvaPanel(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
             content()
         }
     }
