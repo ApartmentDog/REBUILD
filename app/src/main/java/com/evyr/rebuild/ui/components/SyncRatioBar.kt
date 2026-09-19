@@ -87,7 +87,10 @@ fun SyncRatioBar(
             .background(EvaBackground)
             .border(3.dp, EvaOutline)
     ) {
-        Canvas(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+        // 150dp was most of a phone screen for a readout that's one number and
+        // a trace. 104 keeps the oscilloscope legible without pushing the
+        // checklist below the fold.
+        Canvas(modifier = Modifier.fillMaxWidth().height(104.dp)) {
             val w = size.width
             val h = size.height
             val midY = h * 0.42f
@@ -152,7 +155,7 @@ fun SyncRatioBar(
             }
         }
 
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             Text(
                 text = "SYNC RATIO",
                 fontFamily = TerminalFontFamily,
@@ -165,7 +168,7 @@ fun SyncRatioBar(
         Column(
             modifier = Modifier
                 .align(androidx.compose.ui.Alignment.TopEnd)
-                .padding(12.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalAlignment = androidx.compose.ui.Alignment.End
         ) {
             Text(
@@ -173,7 +176,7 @@ fun SyncRatioBar(
                 fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Bold,
                 color = statusColor,
-                fontSize = 34.sp
+                fontSize = 26.sp
             )
             Text(
                 text = statusText,

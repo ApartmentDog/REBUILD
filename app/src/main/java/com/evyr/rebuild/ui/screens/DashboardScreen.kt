@@ -56,7 +56,7 @@ fun DashboardScreen(
             .background(EvaBackground)
     ) {
         // Header — hazard-stripe framed, EVA-red banner with cel-outlined title
-        HazardStripe(height = 8.dp)
+        HazardStripe(height = 6.dp)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -96,12 +96,12 @@ fun DashboardScreen(
                 }
             }
         }
-        HazardStripe(height = 8.dp)
+        HazardStripe(height = 6.dp)
 
         // Sync Ratio: full interwoven oscilloscope readout, matching the actual
         // EVA sync graph rather than a flat number-in-a-box panel.
         EvaPanel(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             shadowCorner = EvaPanelShadowCorner.BOTTOM_RIGHT
         ) {
             Column {
