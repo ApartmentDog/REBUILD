@@ -45,7 +45,8 @@ data class BackupEnvelope(
     val streakBreaks: List<StreakBreak> = emptyList(),
     val scanProgress: List<DailyScanProgress> = emptyList(),
     val placeDirectives: List<GeofencePlaceDirective> = emptyList(),
-    val reminders: List<Reminder> = emptyList()
+    val reminders: List<Reminder> = emptyList(),
+    val volumeProgress: List<DailyVolumeProgress> = emptyList()
 )
 
 object BackupManager {
@@ -76,14 +77,15 @@ object BackupManager {
         streakBreaks = db.streakBreakDao().getAll(),
         scanProgress = db.dailyScanProgressDao().getAll(),
         placeDirectives = db.geofencePlaceDirectiveDao().getAll(),
-        reminders = db.reminderDao().getAll()
+        reminders = db.reminderDao().getAll(),
+        volumeProgress = db.dailyVolumeProgressDao().getAll()
     )
 
     fun countRows(e: BackupEnvelope): Int =
         e.directives.size + e.completions.size + e.streaks.size + e.nfcTags.size +
             e.notebookEntries.size + e.sessionSteps.size + e.sessionLogs.size +
             e.mediaAttachments.size +
-            e.geofencePlaces.size + e.syncHistory.size + e.streakBreaks.size + e.scanProgress.size + e.placeDirectives.size + e.reminders.size
+            e.geofencePlaces.size + e.syncHistory.size + e.streakBreaks.size + e.scanProgress.size + e.placeDirectives.size + e.reminders.size + e.volumeProgress.size
 
     /**
      * Wipes every table and repopulates from the envelope, inside one transaction
@@ -107,6 +109,7 @@ object BackupManager {
             envelope.streakBreaks.forEach { db.streakBreakDao().insert(it) }
             envelope.scanProgress.forEach { db.dailyScanProgressDao().upsert(it) }
             envelope.placeDirectives.forEach { db.geofencePlaceDirectiveDao().link(it) }
+            envelope.volumeProgress.forEach { db.dailyVolumeProgressDao().upsert(it) }
             // Known gap: this writes reminders to the database but does not
             // re-arm their AlarmManager alarms -- applyEnvelope has no Context
             // to call ReminderScheduler with, and widening this function's

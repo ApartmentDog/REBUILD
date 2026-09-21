@@ -26,6 +26,7 @@ import com.evyr.rebuild.ui.components.CelOutlineText
 import com.evyr.rebuild.ui.components.EvaPanel
 import com.evyr.rebuild.ui.components.EvaPanelShadowCorner
 import com.evyr.rebuild.ui.components.HazardStripe
+import com.evyr.rebuild.ui.components.LiquidFillBar
 import com.evyr.rebuild.ui.components.MiniLineChart
 import com.evyr.rebuild.ui.components.VersionFooter
 import com.evyr.rebuild.ui.theme.*
@@ -42,6 +43,7 @@ fun DashboardScreen(
     val syncRatio by viewModel.syncRatio.collectAsState()
     val syncHistory by viewModel.syncHistory.collectAsState()
     val scanProgress by viewModel.scanProgressToday.collectAsState()
+    val volumeProgress by viewModel.volumeProgressToday.collectAsState()
     val daily by viewModel.dailyItems.collectAsState()
     val weekly by viewModel.weeklyItems.collectAsState()
     val standing by viewModel.standingItems.collectAsState()
@@ -221,6 +223,7 @@ fun DashboardScreen(
                     0 -> item {
                         val dueDaily = daily.filter { viewModel.isDueToday(it) }
                         val tapTrackers = dueDaily.filter { it.requiredScans > 1 && !it.locked }
+                        val volumeTrackers = dueDaily.filter { it.targetOz != null && !it.locked }
                         if (tapTrackers.isNotEmpty()) {
                             // All trackers share one panel as compact rows rather
                             // than each getting its own card. The old layout cost
@@ -243,8 +246,40 @@ fun DashboardScreen(
                                 }
                             }
                         }
+                        if (volumeTrackers.isNotEmpty()) {
+                            // Separate panel from tapTrackers above -- different input
+                            // model (typed amount vs. tap-to-increment) and different
+                            // visual (liquid fill vs. segments), own card so neither
+                            // changes the other's layout or behavior.
+                            com.evyr.rebuild.ui.components.EvaPanel(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                    volumeTrackers.forEachIndexed { i, d ->
+                                        if (i > 0) Spacer(Modifier.height(10.dp))
+                                        var showEntry by remember(d.id) { mutableStateOf(false) }
+                                        LiquidFillBar(
+                                            loggedOz = volumeProgress[d.id] ?: 0,
+                                            targetOz = d.targetOz ?: 1,
+                                            label = d.title,
+                                            modifier = Modifier.fillMaxWidth().clickable { showEntry = true }
+                                        )
+                                        if (showEntry) {
+                                            VolumeEntryDialog(
+                                                directiveTitle = d.title,
+                                                onDismiss = { showEntry = false },
+                                                onConfirm = { amount ->
+                                                    viewModel.logVolume(d.id, amount)
+                                                    showEntry = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         ZonePanel(title = "DAILY") {
-                            dueDaily.filter { it.requiredScans <= 1 || it.locked }.forEach { d ->
+                            dueDaily.filter { (it.requiredScans <= 1 || it.locked) && it.targetOz == null }.forEach { d ->
                                 CheckableRow(
                                     directive = d,
                                     isDone = completedIds.contains(d.id),
@@ -564,4 +599,52 @@ private fun describeWeeklySchedule(d: Directive): String = when (d.recurrenceTyp
         "every ${d.recurrenceIntervalDays ?: "?"} days"
     com.evyr.rebuild.data.RecurrenceType.MONTHLY ->
         "day ${d.recurrenceDayOfMonth ?: "?"} of the month"
+}
+
+/** Typed-amount entry for a volume-tracker directive (e.g. "16" for 16oz just
+ *  drunk). Additive -- each confirmed entry adds to today's running total. */
+@Composable
+private fun VolumeEntryDialog(
+    directiveTitle: String,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var amountText by remember { mutableStateOf("") }
+    val amount = amountText.toIntOrNull()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = EvaPanelBg,
+        title = { Text(directiveTitle.uppercase(), fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontWeight = FontWeight.Bold) },
+        text = {
+            OutlinedTextField(
+                value = amountText,
+                onValueChange = { amountText = it.filter { c -> c.isDigit() } },
+                placeholder = { Text("Amount (oz)", fontFamily = TerminalFontFamily) },
+                singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = EvaTextPrimary,
+                    unfocusedTextColor = EvaTextPrimary,
+                    focusedBorderColor = EvaYellow,
+                    unfocusedBorderColor = EvaTextDim
+                )
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { amount?.let { onConfirm(it) } },
+                enabled = amount != null && amount > 0
+            ) {
+                Text("LOG", fontFamily = TerminalFontFamily, color = EvaGreen, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCEL", fontFamily = TerminalFontFamily, color = EvaTextDim)
+            }
+        }
+    )
 }

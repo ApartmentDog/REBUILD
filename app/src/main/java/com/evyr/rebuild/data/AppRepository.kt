@@ -237,6 +237,32 @@ class AppRepository(private val db: RebuildDatabase) {
         return ScanOutcome(directive.title, next, required, done)
     }
 
+    /**
+     * Logs a typed amount (oz) toward a volume-tracker directive's daily target,
+     * additively -- each entry adds to the day's running total rather than
+     * replacing it. Marks the directive complete once the total meets or exceeds
+     * targetOz, same completion semantics as incrementScanProgress.
+     */
+    suspend fun logVolumeProgress(directiveId: Long, amountOz: Int): ScanOutcome? {
+        if (amountOz <= 0) return null
+        val directive = db.directiveDao().observeAll().first().find { it.id == directiveId } ?: return null
+        val target = directive.targetOz?.coerceAtLeast(1) ?: return null
+
+        val today = todayKey()
+        val already = db.dailyVolumeProgressDao().get(directiveId, today)?.loggedOz ?: 0
+        val next = already + amountOz
+        db.dailyVolumeProgressDao().upsert(DailyVolumeProgress(directiveId, today, next))
+
+        val done = next >= target
+        if (done) markComplete(directiveId, source = "volume")
+
+        return ScanOutcome(directive.title, next, target, done)
+    }
+
+    fun observeVolumeProgressToday(): Flow<Map<Long, Int>> =
+        db.dailyVolumeProgressDao().observeForDate(todayKey())
+            .map { list -> list.associate { it.directiveId to it.loggedOz } }
+
     // ---------- Hidden section media ----------
 
     fun observeHiddenMedia(): Flow<List<HiddenMediaItem>> = db.hiddenMediaDao().observeAll()

@@ -28,9 +28,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Reminder::class,
         TarotPull::class,
         BookItem::class,
-        ConfessionEntry::class
+        ConfessionEntry::class,
+        DailyVolumeProgress::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -48,6 +49,7 @@ abstract class RebuildDatabase : RoomDatabase() {
     abstract fun notificationPrefsDao(): NotificationPrefsDao
     abstract fun streakBreakDao(): StreakBreakDao
     abstract fun dailyScanProgressDao(): DailyScanProgressDao
+    abstract fun dailyVolumeProgressDao(): DailyVolumeProgressDao
     abstract fun hiddenMediaDao(): HiddenMediaDao
     abstract fun geofencePlaceDirectiveDao(): GeofencePlaceDirectiveDao
     abstract fun reminderDao(): ReminderDao
@@ -347,6 +349,22 @@ abstract class RebuildDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE directives ADD COLUMN targetOz INTEGER")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS daily_volume_progress (
+                        directiveId INTEGER NOT NULL,
+                        date TEXT NOT NULL,
+                        loggedOz INTEGER NOT NULL,
+                        PRIMARY KEY(directiveId, date)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): RebuildDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -354,7 +372,7 @@ abstract class RebuildDatabase : RoomDatabase() {
                     RebuildDatabase::class.java,
                     "rebuild.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                     .build().also { INSTANCE = it }
             }
         }

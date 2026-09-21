@@ -59,6 +59,50 @@ fun DirectiveEditRow(directive: Directive, onEdit: () -> Unit, onReminders: () -
     }
 }
 
+/**
+ * Purpose-built add flow for a mindset line: just a title field, no zone
+ * picker/recurrence/NFC section to click past. Builds a minimal Directive
+ * itself (zone=MINDSET, kind=DISPLAY_ONLY) rather than going through
+ * DirectiveEditDialog, which stays exactly as-is for every other zone and for
+ * editing an existing line via the full editor.
+ */
+@Composable
+fun AddMindsetLineDialog(
+    onDismiss: () -> Unit,
+    onSave: (Directive) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = NervPanel,
+        title = { Text("ADD MINDSET LINE", fontFamily = TerminalFontFamily, color = NervOrange) },
+        text = {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                placeholder = { Text("What should it say?", fontFamily = TerminalFontFamily) },
+                colors = rebuildTextFieldColors()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onSave(Directive(title = title.trim(), zone = Zone.MINDSET, kind = ItemKind.DISPLAY_ONLY))
+                },
+                enabled = title.isNotBlank()
+            ) {
+                Text("SAVE", fontFamily = TerminalFontFamily, color = NervGreen, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCEL", fontFamily = TerminalFontFamily, color = NervDim)
+            }
+        }
+    )
+}
+
 @Composable
 fun DirectiveEditDialog(
     existing: Directive?,

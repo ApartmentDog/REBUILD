@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evyr.rebuild.data.Directive
-import com.evyr.rebuild.data.Zone
 import com.evyr.rebuild.ui.MainViewModel
 import com.evyr.rebuild.ui.theme.*
 
@@ -80,9 +79,7 @@ fun MindsetSection(viewModel: MainViewModel) {
     }
 
     if (showAddDialog) {
-        DirectiveEditDialog(
-            existing = null,
-            defaultZone = Zone.MINDSET,
+        AddMindsetLineDialog(
             onDismiss = { showAddDialog = false },
             onSave = { viewModel.addDirective(it); showAddDialog = false }
         )

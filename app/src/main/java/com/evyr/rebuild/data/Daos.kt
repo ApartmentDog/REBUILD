@@ -246,6 +246,24 @@ interface DailyScanProgressDao {
 }
 
 @Dao
+interface DailyVolumeProgressDao {
+    @Query("SELECT * FROM daily_volume_progress WHERE date = :date")
+    fun observeForDate(date: String): Flow<List<DailyVolumeProgress>>
+
+    @Query("SELECT * FROM daily_volume_progress WHERE directiveId = :directiveId AND date = :date LIMIT 1")
+    suspend fun get(directiveId: Long, date: String): DailyVolumeProgress?
+
+    @Query("SELECT * FROM daily_volume_progress")
+    suspend fun getAll(): List<DailyVolumeProgress>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(progress: DailyVolumeProgress)
+
+    @Query("DELETE FROM daily_volume_progress WHERE directiveId = :directiveId AND date = :date")
+    suspend fun clear(directiveId: Long, date: String)
+}
+
+@Dao
 interface StreakBreakDao {
     @Query("SELECT * FROM streak_breaks WHERE directiveId = :directiveId ORDER BY brokenAtEpochMs DESC")
     suspend fun forDirective(directiveId: Long): List<StreakBreak>

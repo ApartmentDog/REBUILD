@@ -61,7 +61,12 @@ data class Directive(
     // months (31 on Feb means the 28th/29th) rather than silently never firing
     // in months that don't have a 31st.
     val recurrenceDayOfMonth: Int? = null,
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    // Non-null marks this directive as a volume tracker (e.g. water): instead of
+    // a checkbox or tap count, the user types in an amount and the bar fills as
+    // a percentage of this target. Null means "not a volume tracker" -- every
+    // existing directive keeps its current checkbox/tap behavior untouched.
+    val targetOz: Int? = null
 )
 
 /**
@@ -92,6 +97,20 @@ data class DailyScanProgress(
     val directiveId: Long,
     val date: String,
     val count: Int
+)
+
+/**
+ * Running oz total for a volume-tracker directive (targetOz != null) on a given
+ * day. Mirrors DailyScanProgress's shape/reset-by-date pattern but stores a
+ * logged amount instead of a tap count, since volume tracking is a distinct
+ * input model (typed amount vs. tap-to-increment) from the NFC scan system.
+ */
+@Serializable
+@Entity(tableName = "daily_volume_progress", primaryKeys = ["directiveId", "date"])
+data class DailyVolumeProgress(
+    val directiveId: Long,
+    val date: String,
+    val loggedOz: Int
 )
 
 /**

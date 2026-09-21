@@ -138,6 +138,15 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
     val scanProgressToday: StateFlow<Map<Long, Int>> = repo.observeScanProgressToday()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    /** directiveId -> oz logged so far today, for volume-tracker directives. */
+    val volumeProgressToday: StateFlow<Map<Long, Int>> = repo.observeVolumeProgressToday()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Adds a typed amount (oz) to a volume-tracker directive's running daily total. */
+    fun logVolume(directiveId: Long, amountOz: Int) {
+        viewModelScope.launch { repo.logVolumeProgress(directiveId, amountOz) }
+    }
+
     fun deleteTagPublic(tag: NfcTag) {
         viewModelScope.launch { repo.deleteTag(tag) }
     }
