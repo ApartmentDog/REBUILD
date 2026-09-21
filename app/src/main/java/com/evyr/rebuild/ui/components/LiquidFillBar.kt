@@ -2,6 +2,7 @@ package com.evyr.rebuild.ui.components
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.evyr.rebuild.ui.theme.EvaTextDim
 import com.evyr.rebuild.ui.theme.EvaTextPrimary
 import com.evyr.rebuild.ui.theme.TerminalFontFamily
+import kotlin.math.PI
 import kotlin.math.sin
 
 private val LiquidColor = Color(0xFF3D8AFF)
@@ -129,7 +131,7 @@ fun LiquidFillBar(
                 val step = size.width / 24f
                 var x = 0f
                 while (x <= size.width) {
-                    val y = fillTopY + sin((x / size.width) * 4 * Math.PI + wavePhase).toFloat() * waveHeightPx
+                    val y = fillTopY + sin((x / size.width) * 4f * PI.toFloat() + wavePhase) * waveHeightPx
                     lineTo(x, y)
                     x += step
                 }
