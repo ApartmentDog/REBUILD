@@ -272,6 +272,29 @@ fun DirectiveEditDialog(
                         fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
                     )
 
+                    var isVolumeTracker by remember { mutableStateOf(existing?.targetOz != null) }
+                    var targetOzText by remember { mutableStateOf((existing?.targetOz ?: 125).toString()) }
+
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = isVolumeTracker, onCheckedChange = { isVolumeTracker = it })
+                        Spacer(Modifier.width(8.dp))
+                        Text("Volume tracker (type an amount, e.g. water)", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp)
+                    }
+                    if (isVolumeTracker) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = targetOzText,
+                            onValueChange = { targetOzText = it.filter(Char::isDigit).take(4) },
+                            label = { Text("Daily target (oz)", fontFamily = TerminalFontFamily) },
+                            colors = rebuildTextFieldColors()
+                        )
+                        Text(
+                            "Shows as a single fill bar. Tap it to type in an amount as you drink -- fills toward this target instead of counting taps.",
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                        )
+                    }
+
                 }
             }
         },
@@ -297,6 +320,14 @@ fun DirectiveEditDialog(
                                 requiredScans = if (zone == Zone.DAILY || zone == Zone.WEEKLY) {
                                     (requiredScans.toIntOrNull() ?: 1).coerceAtLeast(1)
                                 } else 1,
+                                // Independent of requiredScans -- a directive can be a
+                                // volume tracker regardless of its tap count, since the
+                                // volume panel and tap panel are two separate render
+                                // paths on the Dashboard (see DashboardScreen). Only
+                                // set within DAILY/WEEKLY, same as the tap system.
+                                targetOz = if (isVolumeTracker && (zone == Zone.DAILY || zone == Zone.WEEKLY)) {
+                                    targetOzText.toIntOrNull()?.coerceAtLeast(1)
+                                } else null,
                                 recurrenceType = if (zone == Zone.DAILY || zone == Zone.WEEKLY) recurrenceType else RecurrenceType.NONE,
                                 recurrenceDays = if (recurrenceType == RecurrenceType.SPECIFIC_DAYS && selectedDays.isNotEmpty())
                                     selectedDays.sorted().joinToString(",") else null,
