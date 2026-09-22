@@ -123,6 +123,8 @@ fun DirectiveEditDialog(
     }
     var intervalDaysText by remember { mutableStateOf((existing?.recurrenceIntervalDays ?: 3).toString()) }
     var dayOfMonthText by remember { mutableStateOf((existing?.recurrenceDayOfMonth ?: 1).toString()) }
+    var isVolumeTracker by remember { mutableStateOf(existing?.targetOz != null) }
+    var targetOzText by remember { mutableStateOf((existing?.targetOz ?: 125).toString()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -271,9 +273,6 @@ fun DirectiveEditDialog(
                             "-- tap it directly, or scan an NFC tag if one's linked. Doesn't need NFC on.",
                         fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
                     )
-
-                    var isVolumeTracker by remember { mutableStateOf(existing?.targetOz != null) }
-                    var targetOzText by remember { mutableStateOf((existing?.targetOz ?: 125).toString()) }
 
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
