@@ -53,6 +53,7 @@ fun NfcRegistrationScreen(
     var showSetupDialog by remember { mutableStateOf(false) }
     var labelDraft by remember { mutableStateOf("") }
     var linkedDirective by remember { mutableStateOf<Directive?>(null) }
+    var isChecklist by remember { mutableStateOf(false) }
     var awaitingTap by remember { mutableStateOf(false) }
 
     val writeResult = activity?.lastWriteResult
@@ -66,7 +67,7 @@ fun NfcRegistrationScreen(
         val result = writeResult ?: return@LaunchedEffect
         val uid = pendingScanUid ?: return@LaunchedEffect
         if (result is NfcHelper.WriteResult.Success) {
-            viewModel.registerTag(uid, labelDraft, linkedDirective?.id)
+            viewModel.registerTag(uid, labelDraft, linkedDirective?.id, opensChecklist = isChecklist)
             awaitingTap = false
             showSetupDialog = false
             activity?.disarmPendingRegistration()
@@ -112,6 +113,7 @@ fun NfcRegistrationScreen(
             onClick = {
                 labelDraft = ""
                 linkedDirective = null
+                isChecklist = false
                 awaitingTap = false
                 activity?.disarmPendingRegistration()
                 showSetupDialog = true
@@ -155,6 +157,17 @@ fun NfcRegistrationScreen(
                             colors = rebuildTextFieldColors()
                         )
                         Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = isChecklist, onCheckedChange = { isChecklist = it })
+                            Spacer(Modifier.width(8.dp))
+                            Text("DOOR CHECKLIST", fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 12.sp)
+                        }
+                        Text(
+                            "Tapping this tag shows all your other tagged items and whether you've tapped them today, instead of ticking off one directive.",
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                        )
+                        if (!isChecklist) {
+                        Spacer(Modifier.height(12.dp))
                         Text("LINK TO DIRECTIVE (OPTIONAL)", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
                         daily.forEach { d ->
                             Row(
@@ -168,6 +181,7 @@ fun NfcRegistrationScreen(
                                 )
                                 Text(d.title, fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 12.sp)
                             }
+                        }
                         }
                     } else {
                         Text(
@@ -248,8 +262,14 @@ private fun TagRow(tag: NfcTag, daily: List<Directive>, fmt: SimpleDateFormat, v
         Column(modifier = Modifier.weight(1f)) {
             Text(tag.label.uppercase(), fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 13.sp)
             Text(
-                linkedTitle?.let { "LINKED — $it" } ?: "UNLINKED",
-                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                when {
+                    tag.opensChecklist -> "DOOR CHECKLIST — SHOWS ALL TAGGED ITEMS"
+                    linkedTitle != null -> "LINKED — $linkedTitle"
+                    else -> "UNLINKED"
+                },
+                fontFamily = TerminalFontFamily,
+                color = if (tag.opensChecklist) NervOrange else NervDim,
+                fontSize = 10.sp
             )
             tag.lastScanEpochMs?.let {
                 Text(

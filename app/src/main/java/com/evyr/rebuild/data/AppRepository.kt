@@ -175,9 +175,24 @@ class AppRepository(private val db: RebuildDatabase) {
 
     // ---------- NFC ----------
 
-    suspend fun registerTag(uid: String, label: String, linkedDirectiveId: Long?) {
-        db.nfcTagDao().upsert(NfcTag(tagUid = uid, label = label, linkedDirectiveId = linkedDirectiveId))
+    suspend fun registerTag(
+        uid: String,
+        label: String,
+        linkedDirectiveId: Long?,
+        opensChecklist: Boolean = false
+    ) {
+        db.nfcTagDao().upsert(
+            NfcTag(
+                tagUid = uid,
+                label = label,
+                // A checklist tag reports on the other tags; it doesn't tick anything itself.
+                linkedDirectiveId = if (opensChecklist) null else linkedDirectiveId,
+                opensChecklist = opensChecklist
+            )
+        )
     }
+
+    suspend fun findTag(uid: String): NfcTag? = db.nfcTagDao().findByUid(uid)
 
     /**
      * Result of a scan, so callers can tell the difference between "done" and

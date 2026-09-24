@@ -54,6 +54,19 @@ class NfcScanActivity : Activity() {
 
         CoroutineScope(Dispatchers.IO).launch {
             val repo = AppRepository(RebuildDatabase.getInstance(applicationContext))
+
+            // Door tag: show the checklist instead of ticking anything off.
+            if (repo.findTag(uid)?.opensChecklist == true) {
+                withContext(Dispatchers.Main) {
+                    startActivity(
+                        Intent(applicationContext, DoorChecklistActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    finish()
+                }
+                return@launch
+            }
+
             val outcome = repo.handleTagScan(uid, locationLabel = null)
             val message = when {
                 outcome == null -> "Unregistered tag — open REBUILD to set it up"

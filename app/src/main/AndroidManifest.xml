@@ -77,6 +77,14 @@
           any manifest filter.
         -->
         <activity
+            android:name=".nfc.DoorChecklistActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Rebuild.Invisible" />
+
+        <activity
             android:name=".nfc.NfcScanActivity"
             android:exported="true"
             android:excludeFromRecents="true"

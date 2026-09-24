@@ -148,7 +148,10 @@ data class NfcTag(
     val label: String,           // "Wallet Tray", "Key Hook", etc.
     val linkedDirectiveId: Long?,
     val lastScanEpochMs: Long? = null,
-    val lastScanLocationLabel: String? = null
+    val lastScanLocationLabel: String? = null,
+    // A door tag: tapping it opens a checklist of every other tagged item
+    // and when it was last tapped, instead of ticking off one directive.
+    val opensChecklist: Boolean = false
 )
 
 /**

@@ -107,7 +107,16 @@ class MainActivity : FragmentActivity() {
                         val tags = viewModel.tags.value
                         val known = tags.any { it.tagUid == uid }
                         if (known) {
-                            viewModel.handleTagScan(uid, locationLabel = null)
+                            if (tags.first { it.tagUid == uid }.opensChecklist) {
+                                startActivity(
+                                    android.content.Intent(
+                                        this@MainActivity,
+                                        com.evyr.rebuild.nfc.DoorChecklistActivity::class.java
+                                    )
+                                )
+                            } else {
+                                viewModel.handleTagScan(uid, locationLabel = null)
+                            }
                             pendingScanUid = null
                         } else {
                             screen = Screen.NFC_TAGS
