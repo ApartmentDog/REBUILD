@@ -79,13 +79,15 @@ fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     // removal request never actually reached Play Services). Runs quietly;
     // only logged, not surfaced as a status message, since this should be a
     // no-op in the common case where nothing drifted.
-    LaunchedEffect(places, hasLocationPermission) {
+    //
+    // This used to reconcile against the on-screen `places` list, which starts
+    // empty until the database loads -- so every open first ran "remove all,
+    // add nothing" (the "0 place(s)" line in the debug log), and backing out
+    // before the list loaded left no geofences at all. GeofenceSync reads the
+    // database itself, and only re-registers when something needs it.
+    LaunchedEffect(hasLocationPermission) {
         if (hasLocationPermission) {
-            geofenceManager.reconcileGeofences(places) { success, error ->
-                val msg = if (success) "reconciled geofences for ${places.size} place(s)"
-                else "reconciliation failed: $error"
-                com.evyr.rebuild.location.GeofenceDebugLog.log(context, msg)
-            }
+            com.evyr.rebuild.location.GeofenceSync.syncIfNeeded(context, "Locations screen")
         }
     }
 

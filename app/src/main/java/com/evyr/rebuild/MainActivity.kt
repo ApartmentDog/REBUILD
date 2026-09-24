@@ -67,6 +67,13 @@ class MainActivity : FragmentActivity() {
         val pinManager = PinManager(applicationContext)
         val quoteTracker = com.evyr.rebuild.data.DailyQuoteTracker(applicationContext)
         com.evyr.rebuild.data.WeeklyBackupWorker.schedule(applicationContext)
+
+        // Re-register geofences if they were dropped (location switched off,
+        // a failed registration) or it's been over a day. Reboots and updates
+        // are handled by BootReceiver; this catches everything else.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            com.evyr.rebuild.location.GeofenceSync.syncIfNeeded(applicationContext, "on app open")
+        }
         viewModel = MainViewModel(repo)
 
         // Clears reminders orphaned by a deleted directive and re-arms the rest.

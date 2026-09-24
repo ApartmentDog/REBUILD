@@ -58,11 +58,15 @@ class GeofenceManager(private val context: Context) {
             .setNotificationResponsiveness(RESPONSIVENESS_MS)
             .build()
 
+        // Report which side of the fence the phone is on right now, so the
+        // app starts from a known position; the receiver records that report
+        // as state and fires nothing (see GeofencePresence.markSyncPending).
         val request = GeofencingRequest.Builder()
-            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_EXIT)
             .addGeofence(geofence)
             .build()
 
+        GeofencePresence.markSyncPending(context, listOf(place.id))
         geofencingClient.addGeofences(request, geofencePendingIntent())
             .addOnSuccessListener { onResult(true, null) }
             .addOnFailureListener { e -> onResult(false, e.message ?: e.javaClass.simpleName) }
@@ -116,10 +120,17 @@ class GeofenceManager(private val context: Context) {
                         .setNotificationResponsiveness(RESPONSIVENESS_MS)
                         .build()
                 }
+                // Previously no initial trigger here, to avoid synthetic
+                // reminders. But that left the app blind to where the phone
+                // actually was after re-registering, so a stale "outside" made
+                // the next real departure get ignored. Now Play Services reports
+                // the current side of every fence, and the receiver records
+                // those reports silently as state (markSyncPending below).
                 val request = GeofencingRequest.Builder()
-                    .setInitialTrigger(0) // no synthetic re-trigger on reconciliation
+                    .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER or GeofencingRequest.INITIAL_TRIGGER_EXIT)
                     .addGeofences(geofences)
                     .build()
+                GeofencePresence.markSyncPending(context, currentPlaces.map { it.id })
                 geofencingClient.addGeofences(request, geofencePendingIntent())
                     .addOnSuccessListener { onResult(true, null) }
                     .addOnFailureListener { e -> onResult(false, e.message ?: e.javaClass.simpleName) }

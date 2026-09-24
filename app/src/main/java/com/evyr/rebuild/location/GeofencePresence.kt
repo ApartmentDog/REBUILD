@@ -17,6 +17,10 @@ object GeofencePresence {
 
     private const val PREFS = "geofence_presence"
 
+    /** How long after registering we'll still treat a place's first report
+     *  as a position report rather than a crossing. */
+    private const val SYNC_WINDOW_MS = 15 * 60 * 1000L
+
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -49,6 +53,36 @@ object GeofencePresence {
     }
 
     fun clear(context: Context, placeId: Long) {
-        prefs(context).edit().remove("place_$placeId").remove("left_$placeId").apply()
+        prefs(context).edit()
+            .remove("place_$placeId")
+            .remove("left_$placeId")
+            .remove("sync_$placeId")
+            .apply()
+    }
+
+    /**
+     * Called right before places are (re)registered. Registration asks Play
+     * Services to report which side of each fence the phone is already on,
+     * and the next report for each of these places is that position report,
+     * not someone walking out the door.
+     */
+    fun markSyncPending(context: Context, placeIds: List<Long>) {
+        val now = System.currentTimeMillis()
+        val e = prefs(context).edit()
+        placeIds.forEach { e.putLong("sync_$it", now) }
+        e.apply()
+    }
+
+    /**
+     * True for the first report after a registration, within the window.
+     * Consumes the flag, so the report after that is treated as a real
+     * crossing again.
+     */
+    fun consumeSyncPending(context: Context, placeId: Long): Boolean {
+        val p = prefs(context)
+        val at = p.getLong("sync_$placeId", 0L)
+        if (at == 0L) return false
+        p.edit().remove("sync_$placeId").apply()
+        return System.currentTimeMillis() - at < SYNC_WINDOW_MS
     }
 }

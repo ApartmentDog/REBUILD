@@ -10,6 +10,7 @@ import androidx.work.WorkManager
 import com.evyr.rebuild.notification.ArrivalNudgeWorker
 import com.evyr.rebuild.notification.DepartureCheckWorker
 import com.google.android.gms.location.Geofence
+import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.GeofencingEvent
 import java.util.concurrent.TimeUnit
 
@@ -51,7 +52,16 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             // Real, previously-silent failure path. Common causes: location
             // services toggled off at the OS level, or the device dropped below
             // the API's minimum geofence-count/location-accuracy requirements.
-            GeofenceDebugLog.log(context, "event.hasError() — code ${event.errorCode}")
+            if (event.errorCode == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) {
+                // Location was switched off: Android has dropped every fence.
+                GeofenceSync.markNeedsResync(context)
+                GeofenceDebugLog.log(
+                    context,
+                    "location turned off — all geofences dropped, will re-register next time REBUILD opens"
+                )
+            } else {
+                GeofenceDebugLog.log(context, "event.hasError() — code ${event.errorCode}")
+            }
             return
         }
 
@@ -105,6 +115,21 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             val entering = transition == Geofence.GEOFENCE_TRANSITION_ENTER
             val knownInside = GeofencePresence.isInside(context, placeId)
             val lastTransitionAt = prefs.getLong("last_transition_$placeId", 0)
+
+            // First report after (re)registering: Play Services saying which
+            // side of the fence the phone is already on. That's position, not
+            // travel -- record it and fire nothing. Without this, re-registering
+            // while home left a stale "outside" in place and the next real
+            // departure was thrown away as "already outside".
+            if (GeofencePresence.consumeSyncPending(context, placeId)) {
+                GeofencePresence.setInside(context, placeId, entering, stampDeparture = false)
+                GeofenceDebugLog.log(
+                    context,
+                    "place $placeId position after registering: ${if (entering) "inside" else "outside"}" +
+                        if (knownInside != null && knownInside != entering) " (corrected)" else ""
+                )
+                return@forEach
+            }
 
             // An EXIT with no recorded arrival is not trustworthy: you can't
             // leave somewhere you were never seen to enter. This happens when
