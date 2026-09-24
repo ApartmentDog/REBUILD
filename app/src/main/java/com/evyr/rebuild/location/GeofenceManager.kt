@@ -23,9 +23,13 @@ import com.google.android.gms.location.LocationServices
 class GeofenceManager(private val context: Context) {
 
     companion object {
-        /** How long Play Services may wait before reporting a crossing. Trades
-         *  a few minutes of lag for far fewer phantom transitions. */
-        private const val RESPONSIVENESS_MS = 5 * 60 * 1000
+        /** 0 asks Play Services for its fastest available detection instead of
+         *  waiting up to a fixed delay. Real-world lag still won't hit zero --
+         *  Play Services batches location checks against battery, typically
+         *  landing somewhere in the 1-3 minute range regardless of this
+         *  setting -- but this removes the 5-minute ceiling that was here
+         *  before and uses more battery for it. */
+        private const val RESPONSIVENESS_MS = 0
     }
 
 
