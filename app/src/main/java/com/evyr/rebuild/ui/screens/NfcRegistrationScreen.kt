@@ -1,6 +1,7 @@
 package com.evyr.rebuild.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evyr.rebuild.data.Directive
@@ -243,6 +245,20 @@ fun NfcRegistrationScreen(
 }
 
 @Composable
+private fun ListToggle(label: String, on: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        fontFamily = TerminalFontFamily,
+        color = if (on) Color.Black else NervDim,
+        fontSize = 10.sp,
+        modifier = Modifier
+            .background(if (on) NervOrange else Color.Transparent, RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    )
+}
+
+@Composable
 private fun TagRow(tag: NfcTag, daily: List<Directive>, fmt: SimpleDateFormat, viewModel: MainViewModel, onDelete: () -> Unit) {
     val linkedTitle = daily.find { it.id == tag.linkedDirectiveId }?.title
     var missPattern by remember(tag.tagUid) { mutableStateOf<Pair<Int, Int>?>(null) }
@@ -263,7 +279,7 @@ private fun TagRow(tag: NfcTag, daily: List<Directive>, fmt: SimpleDateFormat, v
             Text(tag.label.uppercase(), fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 13.sp)
             Text(
                 when {
-                    tag.opensChecklist -> "DOOR CHECKLIST — SHOWS ALL TAGGED ITEMS"
+                    tag.opensChecklist -> "DOOR CHECKLIST — HEADING OUT / JUST GOT HOME"
                     linkedTitle != null -> "LINKED — $linkedTitle"
                     else -> "UNLINKED"
                 },
@@ -282,6 +298,20 @@ private fun TagRow(tag: NfcTag, daily: List<Directive>, fmt: SimpleDateFormat, v
                     "MOST MISSED ON ${WEEKDAY_NAMES.getOrElse(weekday) { "?" }} ($misses in last 60d)",
                     fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 10.sp
                 )
+            }
+            if (!tag.opensChecklist) {
+                // Which door checklist this item shows on.
+                Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("DOOR LISTS:", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                    Spacer(Modifier.width(8.dp))
+                    ListToggle("OUT", tag.onLeavingList) {
+                        viewModel.setTagLists(tag.tagUid, leaving = !tag.onLeavingList, arriving = tag.onArrivingList)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    ListToggle("HOME", tag.onArrivingList) {
+                        viewModel.setTagLists(tag.tagUid, leaving = tag.onLeavingList, arriving = !tag.onArrivingList)
+                    }
+                }
             }
         }
         IconButton(onClick = onDelete) {

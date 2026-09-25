@@ -101,6 +101,10 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.unlockDirective(id) }
     }
 
+    fun setTagLists(uid: String, leaving: Boolean, arriving: Boolean) {
+        viewModelScope.launch { repo.setTagLists(uid, leaving, arriving) }
+    }
+
     fun registerTag(uid: String, label: String, linkedDirectiveId: Long?, opensChecklist: Boolean = false) {
         viewModelScope.launch { repo.registerTag(uid, label, linkedDirectiveId, opensChecklist) }
     }

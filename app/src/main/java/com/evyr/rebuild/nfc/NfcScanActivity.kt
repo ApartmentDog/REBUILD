@@ -67,6 +67,9 @@ class NfcScanActivity : Activity() {
                 return@launch
             }
 
+            // Grab vs put-away, recorded before the database update so the
+            // door checklist sees it when the tag list re-emits.
+            DoorState.recordTap(applicationContext, uid)
             val outcome = repo.handleTagScan(uid, locationLabel = null)
             val message = when {
                 outcome == null -> "Unregistered tag — open REBUILD to set it up"

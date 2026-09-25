@@ -151,7 +151,11 @@ data class NfcTag(
     val lastScanLocationLabel: String? = null,
     // A door tag: tapping it opens a checklist of every other tagged item
     // and when it was last tapped, instead of ticking off one directive.
-    val opensChecklist: Boolean = false
+    val opensChecklist: Boolean = false,
+    // Which door checklist this item shows on: Heading Out (grab it) and/or
+    // Just Got Home (put it back). Both on by default.
+    val onLeavingList: Boolean = true,
+    val onArrivingList: Boolean = true
 )
 
 /**

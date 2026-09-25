@@ -115,6 +115,7 @@ class MainActivity : FragmentActivity() {
                                     )
                                 )
                             } else {
+                                com.evyr.rebuild.nfc.DoorState.recordTap(this@MainActivity, uid)
                                 viewModel.handleTagScan(uid, locationLabel = null)
                             }
                             pendingScanUid = null

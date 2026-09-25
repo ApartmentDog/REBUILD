@@ -194,6 +194,12 @@ class AppRepository(private val db: RebuildDatabase) {
 
     suspend fun findTag(uid: String): NfcTag? = db.nfcTagDao().findByUid(uid)
 
+    /** Which door checklists a tagged item appears on. */
+    suspend fun setTagLists(uid: String, leaving: Boolean, arriving: Boolean) {
+        val tag = db.nfcTagDao().findByUid(uid) ?: return
+        db.nfcTagDao().upsert(tag.copy(onLeavingList = leaving, onArrivingList = arriving))
+    }
+
     /**
      * Result of a scan, so callers can tell the difference between "done" and
      * "2 of 3" without re-querying.
