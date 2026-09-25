@@ -40,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evyr.rebuild.data.AppRepository
-import com.evyr.rebuild.data.NfcTag
 import com.evyr.rebuild.data.RebuildDatabase
 import com.evyr.rebuild.ui.theme.EvaGreen
 import com.evyr.rebuild.ui.theme.NervDim
@@ -54,36 +53,34 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Opened by tapping a door tag (NfcTag.opensChecklist). Two lists:
+ * The leaving / arriving checklist card. Opened from the geofence departure
+ * and arrival notifications (which pass the mode and place), or by tapping a
+ * door tag (which uses the mode from the last geofence event).
  *
- *  - HEADING OUT: items on the leaving list, checked once grabbed since you
- *    last put them away (or since midnight, if you never did).
- *  - JUST GOT HOME: items on the arriving list, checked once put away since
- *    you walked in.
+ *  - HEADING OUT: items to take with you.
+ *  - ARRIVING: items to put back.
  *
- * DoorState picks the mode per tap (first tap of the day is heading out, then
- * it alternates) and tells grab taps from put-away taps. The switch at the top
- * fixes a wrong guess. Reads live from the database, so tapping an item's tag
- * with this open ticks it off in place.
+ * What's on each list comes from DoorChecklistItems. The switch at the top
+ * overrides the mode if the geofence got it wrong. Updates live: tapping an
+ * item's tag with this open ticks it off in place.
  *
- * Skips the PIN, same as a normal tag tap: stopping at the door to unlock the
- * app defeats the point. Shows only tag names and tap times.
+ * Skips the PIN, same as a normal tag tap. Shows only item names and times.
  */
 class DoorChecklistActivity : ComponentActivity() {
 
     private val mode = mutableStateOf(DoorMode.LEAVING)
+    private val placeId = mutableStateOf<Long?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // A fresh open is a door tap; a recreate (rotation) keeps its mode.
-        mode.value = savedInstanceState?.getString(KEY_MODE)?.let { DoorMode.valueOf(it) }
-            ?: DoorState.modeForNewTap(this)
+        applyIntent(intent, savedInstanceState)
 
         val repo = AppRepository(RebuildDatabase.getInstance(applicationContext))
         setContent {
             DoorChecklist(
                 repo = repo,
                 mode = mode.value,
+                placeId = placeId.value,
                 onSwitch = { m ->
                     if (m != mode.value) {
                         DoorState.setMode(this, m)
@@ -95,10 +92,17 @@ class DoorChecklistActivity : ComponentActivity() {
         }
     }
 
-    /** Door tag tapped again while this is open. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        mode.value = DoorState.modeForNewTap(this)
+        applyIntent(intent, null)
+    }
+
+    private fun applyIntent(intent: Intent?, saved: Bundle?) {
+        mode.value = saved?.getString(EXTRA_MODE)?.let { DoorMode.valueOf(it) }
+            ?: intent?.getStringExtra(EXTRA_MODE)?.let { runCatching { DoorMode.valueOf(it) }.getOrNull() }
+            ?: DoorState.currentMode(this)
+        placeId.value = intent?.getLongExtra(EXTRA_PLACE_ID, -1L)?.takeIf { it >= 0L }
+            ?: DoorState.lastPlaceId(this)
     }
 
     override fun onResume() {
@@ -110,57 +114,39 @@ class DoorChecklistActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putString(KEY_MODE, mode.value.name)
+        outState.putString(EXTRA_MODE, mode.value.name)
     }
 
-    private companion object {
-        const val KEY_MODE = "door_mode"
+    companion object {
+        const val EXTRA_MODE = "door_mode"
+        const val EXTRA_PLACE_ID = "place_id"
     }
 }
-
-private data class ChecklistItem(
-    val title: String,
-    val spot: String?,
-    /** When it was grabbed (heading out) or put away (just got home); null = not yet. */
-    val doneAt: Long?
-)
 
 @Composable
 private fun DoorChecklist(
     repo: AppRepository,
     mode: DoorMode,
+    placeId: Long?,
     onSwitch: (DoorMode) -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
+    // Observed only to know when to rebuild: any tag tap updates this.
     val tags by repo.observeTags().collectAsState(initial = null)
 
-    // Linked directive titles, looked up whenever the tag list changes.
-    var titles by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
-    LaunchedEffect(tags) {
-        val ids = tags.orEmpty().mapNotNull { it.linkedDirectiveId }.distinct()
-        titles = ids.mapNotNull { id -> repo.directiveById(id)?.let { id to it.title } }.toMap()
+    var items by remember { mutableStateOf<List<DoorItem>?>(null) }
+    LaunchedEffect(tags, mode, placeId) {
+        items = DoorChecklistItems.build(context, repo, mode, placeId)
     }
 
     val zone = ZoneId.systemDefault()
     val timeFmt = remember { DateTimeFormatter.ofPattern("h:mm a") }
     val leaving = mode == DoorMode.LEAVING
+    val list = items.orEmpty()
 
-    val items = tags.orEmpty()
-        .filter { !it.opensChecklist && (if (leaving) it.onLeavingList else it.onArrivingList) }
-        .map { tag ->
-            val directiveTitle = tag.linkedDirectiveId?.let { titles[it] }
-            ChecklistItem(
-                title = directiveTitle ?: tag.label,
-                // Where the tag lives ("Key Hook") when the title is the directive.
-                spot = tag.label.takeIf { directiveTitle != null && !it.equals(directiveTitle, ignoreCase = true) },
-                doneAt = if (leaving) grabbedSincePutAway(context, tag) else putAwaySinceArriving(context, tag)
-            )
-        }
-        .sortedWith(compareBy<ChecklistItem> { it.doneAt != null }.thenBy { it.title.lowercase() })
-
-    val done = items.count { it.doneAt != null }
-    val verb = if (leaving) "grabbed" else "put away"
+    val done = list.count { it.doneAt != null }
+    val verb = if (leaving) "done" else "put away"
 
     // Dimmed backdrop; tapping outside the card closes it.
     Box(
@@ -194,19 +180,19 @@ private fun DoorChecklist(
                     .background(Color.Black.copy(alpha = 0.3f))
             ) {
                 ModeTab("HEADING OUT", leaving, Modifier.weight(1f)) { onSwitch(DoorMode.LEAVING) }
-                ModeTab("JUST GOT HOME", !leaving, Modifier.weight(1f)) { onSwitch(DoorMode.ARRIVING) }
+                ModeTab("ARRIVING", !leaving, Modifier.weight(1f)) { onSwitch(DoorMode.ARRIVING) }
             }
             Spacer(Modifier.height(12.dp))
             Text(
                 when {
-                    tags == null -> "Loading..."
-                    items.isEmpty() -> "Nothing on this list. Pick items with the OUT / HOME toggles in NFC Tags."
-                    done == items.size -> if (leaving) "All set. Everything's with you." else "All put away."
-                    leaving -> "$done of ${items.size} grabbed. Tap each as you grab it."
-                    else -> "$done of ${items.size} put away. Tap each as you put it back."
+                    items == null -> "Loading..."
+                    list.isEmpty() -> "Nothing on this list. Add items with the OUT / IN toggles in NFC Tags or a place's checklist in Locations."
+                    done == list.size -> if (leaving) "All set. Everything's with you." else "All put away."
+                    leaving -> "$done of ${list.size} done. Tap each as you grab it."
+                    else -> "$done of ${list.size} put away. Tap each as you put it back."
                 },
                 fontFamily = TerminalFontFamily,
-                color = if (items.isNotEmpty() && done == items.size) EvaGreen else NervDim,
+                color = if (list.isNotEmpty() && done == list.size) EvaGreen else NervDim,
                 fontSize = 12.sp
             )
             Spacer(Modifier.height(14.dp))
@@ -217,7 +203,7 @@ private fun DoorChecklist(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items.forEach { item ->
+                list.forEach { item ->
                     val ok = item.doneAt != null
                     Row(
                         Modifier
@@ -299,24 +285,4 @@ private fun ModeTab(label: String, selected: Boolean, modifier: Modifier, onClic
             letterSpacing = 1.sp
         )
     }
-}
-
-/**
- * Heading out: grabbed since it was last put away, and today. Before this
- * feature, taps weren't split into grab/put-away, so an item with no split
- * history falls back to its last scan time.
- */
-private fun grabbedSincePutAway(context: android.content.Context, tag: NfcTag): Long? {
-    val putAway = DoorState.putAwayAt(context, tag.tagUid)
-    val grabbed = DoorState.grabbedAt(context, tag.tagUid)
-        ?: tag.lastScanEpochMs.takeIf { putAway == null }
-        ?: return null
-    val cutoff = maxOf(DoorState.startOfToday(), putAway ?: 0L)
-    return grabbed.takeIf { it >= cutoff }
-}
-
-/** Just got home: put away since the arrival door tap. */
-private fun putAwaySinceArriving(context: android.content.Context, tag: NfcTag): Long? {
-    val arrived = DoorState.arrivedAt(context).takeIf { it > 0L } ?: return null
-    return DoorState.putAwayAt(context, tag.tagUid)?.takeIf { it >= arrived }
 }

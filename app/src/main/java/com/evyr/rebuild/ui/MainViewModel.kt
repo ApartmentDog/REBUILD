@@ -138,6 +138,14 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.setPlaceDirective(placeId, directiveId, enabled) }
     }
 
+    fun observePlaceLinks(placeId: Long): StateFlow<List<com.evyr.rebuild.data.GeofencePlaceDirective>> =
+        repo.observePlaceLinks(placeId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun setPlaceLink(placeId: Long, directiveId: Long, onExit: Boolean, onEnter: Boolean) {
+        viewModelScope.launch { repo.setPlaceLink(placeId, directiveId, onExit, onEnter) }
+    }
+
     /** directiveId -> taps so far today, for multi-scan directives. */
     val scanProgressToday: StateFlow<Map<Long, Int>> = repo.observeScanProgressToday()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())

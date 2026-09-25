@@ -48,14 +48,12 @@ class DepartureCheckWorker(
             return Result.success()
         }
 
-        val startOfToday = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-
-        val missing = repo.nfcLinkedDirectivesMissingSince(startOfToday, placeId)
+        // The leaving checklist: NFC items on the OUT list plus this place's
+        // checklist items marked OUT. Same list the card shows.
+        val missing = com.evyr.rebuild.nfc.DoorChecklistItems
+            .build(applicationContext, repo, com.evyr.rebuild.nfc.DoorMode.LEAVING, placeId)
+            .filter { it.doneAt == null }
+            .map { it.title }
         com.evyr.rebuild.location.GeofenceDebugLog.log(
             applicationContext,
             "${place.label}: ${missing.size} missing NFC-linked item(s)" +
@@ -63,7 +61,7 @@ class DepartureCheckWorker(
         )
 
         if (missing.isNotEmpty()) {
-            NotificationHelper(applicationContext).showDepartureNudge(place.label, missing)
+            NotificationHelper(applicationContext).showDepartureNudge(placeId, place.label, missing)
             com.evyr.rebuild.location.GeofenceDebugLog.log(applicationContext, "notification shown")
         }
         return Result.success()

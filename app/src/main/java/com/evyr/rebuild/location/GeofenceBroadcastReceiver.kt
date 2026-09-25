@@ -36,7 +36,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
          *  transition is noise regardless of which way it points. */
         private const val MAX_TRUSTED_ACCURACY_M = 200f
 
-        private const val ARRIVAL_CHECK_DELAY_MINUTES = 5L
+        /** 0: the arriving checklist is a to-do list for putting things back,
+         *  so it shows on arrival rather than 5 minutes later as a nag. */
+        private const val ARRIVAL_CHECK_DELAY_MINUTES = 0L
         private const val DEBOUNCE_WINDOW_MS = 10 * 60 * 1000L
     }
 
@@ -177,6 +179,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
             when (transition) {
                 Geofence.GEOFENCE_TRANSITION_EXIT -> {
+                    // Leaving checklist mode; closes any put-away window.
+                    com.evyr.rebuild.nfc.DoorState.onGeofenceExit(context, placeId)
                     GeofencePresence.setInside(context, placeId, false)
                     firePlaceReminders(context, placeId, com.evyr.rebuild.data.ReminderTrigger.DEPARTURE)
                     GeofenceDebugLog.log(context, "place $placeId EXIT — enqueuing DepartureCheckWorker")
@@ -188,6 +192,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     WorkManager.getInstance(context).enqueue(request)
                 }
                 Geofence.GEOFENCE_TRANSITION_ENTER -> {
+                    // Arriving checklist mode; opens the put-away window and
+                    // re-counts any taps since you left as put-away.
+                    com.evyr.rebuild.nfc.DoorState.onGeofenceEnter(
+                        context, placeId, GeofencePresence.lastDepartureAt(context, placeId)
+                    )
                     GeofencePresence.setInside(context, placeId, true)
                     firePlaceReminders(context, placeId, com.evyr.rebuild.data.ReminderTrigger.ARRIVAL)
                     GeofenceDebugLog.log(context, "place $placeId ENTER — enqueuing ArrivalNudgeWorker (+${ARRIVAL_CHECK_DELAY_MINUTES}min)")

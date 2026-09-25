@@ -348,6 +348,21 @@ class AppRepository(private val db: RebuildDatabase) {
     fun observePlaceDirectiveIds(placeId: Long): Flow<List<Long>> =
         db.geofencePlaceDirectiveDao().observeForPlace(placeId)
 
+    fun observePlaceLinks(placeId: Long): Flow<List<GeofencePlaceDirective>> =
+        db.geofencePlaceDirectiveDao().observeLinksForPlace(placeId)
+
+    suspend fun placeLinks(placeId: Long): List<GeofencePlaceDirective> =
+        db.geofencePlaceDirectiveDao().linksForPlace(placeId)
+
+    /** Put a directive on a place's leaving and/or arriving checklist; neither removes it. */
+    suspend fun setPlaceLink(placeId: Long, directiveId: Long, onExit: Boolean, onEnter: Boolean) {
+        val dao = db.geofencePlaceDirectiveDao()
+        if (!onExit && !onEnter) dao.unlink(placeId, directiveId)
+        else dao.upsertLink(GeofencePlaceDirective(placeId, directiveId, onExit, onEnter))
+    }
+
+    suspend fun allTags(): List<NfcTag> = db.nfcTagDao().observeAll().first()
+
     suspend fun setPlaceDirective(placeId: Long, directiveId: Long, enabled: Boolean) {
         if (enabled) db.geofencePlaceDirectiveDao().link(GeofencePlaceDirective(placeId, directiveId))
         else db.geofencePlaceDirectiveDao().unlink(placeId, directiveId)

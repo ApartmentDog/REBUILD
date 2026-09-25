@@ -279,7 +279,7 @@ private fun TagRow(tag: NfcTag, daily: List<Directive>, fmt: SimpleDateFormat, v
             Text(tag.label.uppercase(), fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 13.sp)
             Text(
                 when {
-                    tag.opensChecklist -> "DOOR CHECKLIST — HEADING OUT / JUST GOT HOME"
+                    tag.opensChecklist -> "DOOR CHECKLIST — OPENS THE CURRENT LEAVING / ARRIVING LIST"
                     linkedTitle != null -> "LINKED — $linkedTitle"
                     else -> "UNLINKED"
                 },
@@ -302,13 +302,13 @@ private fun TagRow(tag: NfcTag, daily: List<Directive>, fmt: SimpleDateFormat, v
             if (!tag.opensChecklist) {
                 // Which door checklist this item shows on.
                 Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("DOOR LISTS:", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                    Text("CHECKLISTS:", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
                     Spacer(Modifier.width(8.dp))
                     ListToggle("OUT", tag.onLeavingList) {
                         viewModel.setTagLists(tag.tagUid, leaving = !tag.onLeavingList, arriving = tag.onArrivingList)
                     }
                     Spacer(Modifier.width(6.dp))
-                    ListToggle("HOME", tag.onArrivingList) {
+                    ListToggle("IN", tag.onArrivingList) {
                         viewModel.setTagLists(tag.tagUid, leaving = tag.onLeavingList, arriving = !tag.onArrivingList)
                     }
                 }

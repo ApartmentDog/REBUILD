@@ -352,7 +352,11 @@ data class GeofencePlace(
 )
 data class GeofencePlaceDirective(
     val placeId: Long,
-    val directiveId: Long
+    val directiveId: Long,
+    // Which of this place's checklists the directive is on: leaving it (EXIT)
+    // and/or arriving at it (ENTER). Both on by default.
+    val onExit: Boolean = true,
+    val onEnter: Boolean = true
 )
 
 /**

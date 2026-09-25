@@ -80,21 +80,33 @@ class NotificationHelper(private val context: Context) {
         return PendingIntent.getActivity(context, 0, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    /** Fires on leaving a geofenced place, listing which NFC-linked items weren't scanned today. */
-    fun showDepartureNudge(placeLabel: String, missingItems: List<String>) {
+    /** Opens the leaving/arriving checklist card for a place. */
+    private fun checklistIntent(mode: com.evyr.rebuild.nfc.DoorMode, placeId: Long, requestCode: Int): PendingIntent {
+        val i = Intent(context, com.evyr.rebuild.nfc.DoorChecklistActivity::class.java)
+            .putExtra(com.evyr.rebuild.nfc.DoorChecklistActivity.EXTRA_MODE, mode.name)
+            .putExtra(com.evyr.rebuild.nfc.DoorChecklistActivity.EXTRA_PLACE_ID, placeId)
+            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return PendingIntent.getActivity(
+            context, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /** Leaving checklist: fires on geofence EXIT with whatever's still not with you. Tap opens the live card. */
+    fun showDepartureNudge(placeId: Long, placeLabel: String, missingItems: List<String>) {
         val doneIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = ACTION_MARK_DONE; putExtra(EXTRA_NOTIF_ID, NOTIF_ID_DEPARTURE)
         }
         val donePI = PendingIntent.getBroadcast(context, 3, doneIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val body = "Leaving $placeLabel — not scanned yet: ${missingItems.joinToString(", ")}"
+        val body = "Still need: ${missingItems.joinToString(", ")}"
         val notification = NotificationCompat.Builder(context, CHANNEL_GEOFENCE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("REBUILD")
+            .setContentTitle("Leaving $placeLabel")
             .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
-            .setContentIntent(openAppIntent())
+            .setContentIntent(checklistIntent(com.evyr.rebuild.nfc.DoorMode.LEAVING, placeId, 10))
             .addAction(0, "GOT THEM", donePI)
             .build()
         NotificationManagerCompat.from(context).notify(NOTIF_ID_DEPARTURE, notification)
@@ -127,14 +139,15 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val body = "At $placeLabel — still need to put away: ${missingItems.joinToString(", ")}"
+        val body = "Put away: ${missingItems.joinToString(", ")}"
         val notification = NotificationCompat.Builder(context, CHANNEL_GEOFENCE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("REBUILD")
+            .setContentTitle("Arrived at $placeLabel")
             .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
-            .setContentIntent(openAppIntent())
+            .setContentIntent(checklistIntent(com.evyr.rebuild.nfc.DoorMode.ARRIVING, placeId, 11))
             .addAction(0, "DONE", donePendingIntent)
             .addAction(0, "REMIND ME LATER", laterPendingIntent)
             .build()

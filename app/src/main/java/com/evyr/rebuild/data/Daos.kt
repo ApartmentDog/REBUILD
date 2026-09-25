@@ -177,6 +177,16 @@ interface GeofencePlaceDirectiveDao {
     @Query("SELECT * FROM geofence_place_directives")
     suspend fun getAll(): List<GeofencePlaceDirective>
 
+    @Query("SELECT * FROM geofence_place_directives WHERE placeId = :placeId")
+    fun observeLinksForPlace(placeId: Long): Flow<List<GeofencePlaceDirective>>
+
+    @Query("SELECT * FROM geofence_place_directives WHERE placeId = :placeId")
+    suspend fun linksForPlace(placeId: Long): List<GeofencePlaceDirective>
+
+    /** link() ignores conflicts; this one overwrites, for changing OUT/IN. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLink(entry: GeofencePlaceDirective)
+
     @Query("DELETE FROM geofence_place_directives WHERE placeId = :placeId")
     suspend fun clearForPlace(placeId: Long)
 }

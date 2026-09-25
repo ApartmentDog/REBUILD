@@ -477,7 +477,9 @@ private fun PlaceChecklistDialog(
     weekly: List<Directive>,
     onDismiss: () -> Unit
 ) {
-    val selectedIds by viewModel.observePlaceDirectiveIds(place.id).collectAsState()
+    val linksFlow = remember(place.id) { viewModel.observePlaceLinks(place.id) }
+    val links by linksFlow.collectAsState()
+    val byId = links.associateBy { it.directiveId }
     val all = daily + weekly
 
     AlertDialog(
@@ -491,7 +493,8 @@ private fun PlaceChecklistDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    "Checked in addition to whatever's already NFC-linked, which still applies everywhere.",
+                    "OUT items go on the checklist when you leave this place, IN items when you arrive. " +
+                        "NFC items are set separately with their own OUT / IN in NFC Tags.",
                     fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
                 )
                 Spacer(Modifier.height(8.dp))
@@ -499,13 +502,20 @@ private fun PlaceChecklistDialog(
                     Text("No Daily or Weekly directives yet.", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                 }
                 all.forEach { d ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = selectedIds.contains(d.id),
-                            onCheckedChange = { checked -> viewModel.setPlaceDirective(place.id, d.id, checked) },
-                            colors = CheckboxDefaults.colors(checkedColor = NervOrange)
+                    val link = byId[d.id]
+                    val out = link?.onExit == true
+                    val inn = link?.onEnter == true
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            d.title, fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 12.sp,
+                            modifier = Modifier.weight(1f)
                         )
-                        Text(d.title, fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 12.sp)
+                        PlaceListToggle("OUT", out) { viewModel.setPlaceLink(place.id, d.id, !out, inn) }
+                        Spacer(Modifier.width(6.dp))
+                        PlaceListToggle("IN", inn) { viewModel.setPlaceLink(place.id, d.id, out, !inn) }
                     }
                 }
             }
@@ -515,5 +525,22 @@ private fun PlaceChecklistDialog(
                 Text("DONE", fontFamily = TerminalFontFamily, color = NervGreen)
             }
         }
+    )
+}
+
+@Composable
+private fun PlaceListToggle(label: String, on: Boolean, onClick: () -> Unit) {
+    Text(
+        label,
+        fontFamily = TerminalFontFamily,
+        color = if (on) androidx.compose.ui.graphics.Color.Black else NervDim,
+        fontSize = 10.sp,
+        modifier = Modifier
+            .background(
+                if (on) NervOrange else androidx.compose.ui.graphics.Color.Transparent,
+                RoundedCornerShape(4.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 3.dp)
     )
 }
