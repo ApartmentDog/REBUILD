@@ -26,9 +26,19 @@ import com.evyr.rebuild.ui.theme.*
  */
 @Composable
 fun DailyQuoteScreen(mindset: List<Directive>, onContinue: () -> Unit) {
-    // remember with no key: the pick is made once when the screen appears and
-    // survives recomposition, so the line doesn't shuffle underneath you.
-    val quote = remember { mindset.randomOrNull()?.title }
+    // Keyed on mindset.isNotEmpty(): the caller already guards against an
+    // empty list at navigation time, but this screen's own `mindset` param
+    // comes from a separately-collected StateFlow that can still be briefly
+    // empty on the very first composition right after cold start -- the same
+    // stale-empty-read problem MainActivity's mindsetItemsNow() exists to
+    // avoid, just one level down. remember with NO key locked the random
+    // pick onto whatever that first, possibly-empty frame saw, forever, so
+    // a real list arriving a moment later changed nothing: the quote stayed
+    // blank for the rest of this screen's lifetime. Keying on isNotEmpty()
+    // re-picks exactly once, the first time real data shows up, and never
+    // again after that -- so the line still doesn't shuffle underneath you
+    // once it's actually picked.
+    val quote = remember(mindset.isNotEmpty()) { mindset.randomOrNull()?.title }
 
     Column(
         modifier = Modifier
