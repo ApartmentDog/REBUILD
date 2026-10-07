@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.evyr.rebuild.data.DailyQuoteTracker
 import com.evyr.rebuild.data.Directive
 import com.evyr.rebuild.ui.components.HazardStripe
 import com.evyr.rebuild.ui.theme.*
@@ -25,7 +26,7 @@ import com.evyr.rebuild.ui.theme.*
  * rather than show an empty card -- see MainActivity's navigation.
  */
 @Composable
-fun DailyQuoteScreen(mindset: List<Directive>, onContinue: () -> Unit) {
+fun DailyQuoteScreen(mindset: List<Directive>, quoteTracker: DailyQuoteTracker, onContinue: () -> Unit) {
     // Keyed on mindset.isNotEmpty(): the caller already guards against an
     // empty list at navigation time, but this screen's own `mindset` param
     // comes from a separately-collected StateFlow that can still be briefly
@@ -38,7 +39,19 @@ fun DailyQuoteScreen(mindset: List<Directive>, onContinue: () -> Unit) {
     // re-picks exactly once, the first time real data shows up, and never
     // again after that -- so the line still doesn't shuffle underneath you
     // once it's actually picked.
-    val quote = remember(mindset.isNotEmpty()) { mindset.randomOrNull()?.title }
+    //
+    // Avoids repeating the last couple of days' picks: with a small mindset
+    // pool, a plain random pick repeats often enough to be noticeable. The
+    // excluded set only applies when the pool is big enough to spare it --
+    // with 1 or 2 lines total, excluding history would leave nothing to pick
+    // from, so it falls back to the full list rather than show nothing.
+    val directive = remember(mindset.isNotEmpty()) {
+        val recent = quoteTracker.recentlyShownIds().toSet()
+        val eligible = mindset.filterNot { it.id in recent }
+        (eligible.ifEmpty { mindset }).randomOrNull()
+            ?.also { quoteTracker.recordShown(it.id) }
+    }
+    val quote = directive?.title
 
     Column(
         modifier = Modifier

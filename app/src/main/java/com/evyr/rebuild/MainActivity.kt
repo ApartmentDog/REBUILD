@@ -157,6 +157,7 @@ class MainActivity : FragmentActivity() {
                     )
                     Screen.DAILY_QUOTE -> DailyQuoteScreen(
                         mindset = viewModel.mindsetItems.collectAsState().value,
+                        quoteTracker = quoteTracker,
                         onContinue = {
                             quoteTracker.markShownToday()
                             screen = Screen.DASHBOARD

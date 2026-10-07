@@ -31,4 +31,22 @@ class DailyQuoteTracker(context: Context) {
     fun reset() {
         prefs.edit().remove("last_shown_date").apply()
     }
+
+    /**
+     * Directive IDs of the last couple of days' quotes, most recent first.
+     * DailyQuoteScreen excludes these from today's random pick when the
+     * mindset pool is large enough to spare them, so a small handful of
+     * lines doesn't keep repeating two days running.
+     */
+    fun recentlyShownIds(): List<Long> =
+        prefs.getString("recent_ids", "")
+            .orEmpty()
+            .split(",")
+            .mapNotNull { it.toLongOrNull() }
+
+    /** Records today's pick and trims the history to the last 2. */
+    fun recordShown(directiveId: Long) {
+        val updated = (listOf(directiveId) + recentlyShownIds()).distinct().take(2)
+        prefs.edit().putString("recent_ids", updated.joinToString(",")).apply()
+    }
 }
