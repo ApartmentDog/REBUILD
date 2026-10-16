@@ -31,7 +31,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ConfessionEntry::class,
         DailyVolumeProgress::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -385,6 +385,19 @@ abstract class RebuildDatabase : RoomDatabase() {
             }
         }
 
+        /** Tarot spreads: each pull gains the reading it belongs to, the spread,
+         *  its position within it, and the question asked. Purely additive
+         *  columns; existing pulls default to single-card, readingId 0. */
+        private val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tarot_pulls ADD COLUMN readingId INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE tarot_pulls ADD COLUMN spreadId TEXT NOT NULL DEFAULT 'SINGLE'")
+                db.execSQL("ALTER TABLE tarot_pulls ADD COLUMN positionIndex INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE tarot_pulls ADD COLUMN positionLabel TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE tarot_pulls ADD COLUMN question TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): RebuildDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -392,7 +405,7 @@ abstract class RebuildDatabase : RoomDatabase() {
                     RebuildDatabase::class.java,
                     "rebuild.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
                     .build().also { INSTANCE = it }
             }
         }

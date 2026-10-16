@@ -452,6 +452,8 @@ class AppRepository(private val db: RebuildDatabase) {
 
     suspend fun logTarotPull(pull: TarotPull): Long = db.tarotPullDao().insert(pull)
 
+    suspend fun logTarotReading(pulls: List<TarotPull>) = db.tarotPullDao().insertAll(pulls)
+
     // ---------- Books (ALEXANDRIA) ----------
 
     fun observeBooks(): Flow<List<BookItem>> = db.bookDao().observeAll()

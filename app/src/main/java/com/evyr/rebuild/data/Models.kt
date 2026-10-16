@@ -383,7 +383,14 @@ data class TarotPull(
     val cardName: String,
     val arcana: String,       // TarotDeck.Arcana enum name, stored as text
     val reversed: Boolean,
-    val pulledAtEpochMs: Long
+    val pulledAtEpochMs: Long,
+    // Reading grouping (schema v23). readingId == 0 marks a pre-spread legacy
+    // pull, which the log shows as its own single-card reading.
+    val readingId: Long = 0,
+    val spreadId: String = "SINGLE",
+    val positionIndex: Int = 0,
+    val positionLabel: String = "",
+    val question: String = ""
 )
 
 @Serializable
