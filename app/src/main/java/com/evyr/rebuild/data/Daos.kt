@@ -331,6 +331,9 @@ interface TarotPullDao {
 
     @Insert
     suspend fun insert(pull: TarotPull): Long
+
+    @Insert
+    suspend fun insertAll(pulls: List<TarotPull>)
 }
 
 @Dao

@@ -1027,4 +1027,28 @@ object TarotDeck {
         val reversed = (0..1).random() == 0
         return card to reversed
     }
+
+    /** Draws [count] distinct cards (no repeats within a reading), each with a
+     *  random orientation. Order matches spread position order. */
+    fun pull(count: Int): List<Pair<TarotCard, Boolean>> =
+        fullDeck.shuffled().take(count).map { it to ((0..1).random() == 0) }
+
+    val spreads: List<TarotSpread> = listOf(
+        TarotSpread("SINGLE", "SINGLE CARD", listOf("The Card")),
+        TarotSpread("THREE", "PAST / PRESENT / FUTURE", listOf("Past", "Present", "Future")),
+        TarotSpread("SOA", "SITUATION / OBSTACLE / ADVICE", listOf("Situation", "Obstacle", "Advice")),
+        TarotSpread(
+            "CELTIC", "CELTIC CROSS",
+            listOf(
+                "1. Present", "2. Challenge", "3. Foundation", "4. Recent Past", "5. Crown",
+                "6. Near Future", "7. Self", "8. Environment", "9. Hopes & Fears", "10. Outcome"
+            )
+        )
+    )
+
+    fun spreadById(id: String): TarotSpread = spreads.firstOrNull { it.id == id } ?: spreads.first()
 }
+
+/** A named layout: one label per card drawn, in draw order. Stored in the log
+ *  by [id] and [positionLabel], so renaming a spread later doesn't break history. */
+data class TarotSpread(val id: String, val name: String, val positions: List<String>)

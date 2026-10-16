@@ -292,6 +292,31 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         }
     }
 
+    fun logTarotReading(
+        spread: com.evyr.rebuild.tarot.TarotSpread,
+        question: String,
+        drawn: List<Pair<com.evyr.rebuild.tarot.TarotCard, Boolean>>
+    ) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            repo.logTarotReading(
+                drawn.mapIndexed { i, (card, reversed) ->
+                    com.evyr.rebuild.data.TarotPull(
+                        cardName = card.name,
+                        arcana = card.arcana.name,
+                        reversed = reversed,
+                        pulledAtEpochMs = now,
+                        readingId = now,
+                        spreadId = spread.id,
+                        positionIndex = i,
+                        positionLabel = spread.positions.getOrElse(i) { "" },
+                        question = question.trim()
+                    )
+                }
+            )
+        }
+    }
+
     val books: StateFlow<List<com.evyr.rebuild.data.BookItem>> = repo.observeBooks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
