@@ -184,7 +184,7 @@ fun TarotPullScreen(viewModel: MainViewModel, onBack: () -> Unit, onOpenLog: () 
                             .padding(16.dp)
                     ) {
                         Text(
-                            card.glyph,
+                            card.framedGlyph,
                             fontFamily = TerminalFontFamily,
                             color = NervGreen,
                             fontSize = 11.sp,

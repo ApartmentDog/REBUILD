@@ -17,7 +17,44 @@ data class TarotCard(
     val glyph: String,
     val uprightMeaning: String,
     val reversedMeaning: String
-)
+) {
+    /** [glyph] centered on a fixed canvas inside a shared frame, so every card
+     *  renders at identical dimensions. Use this for display, not [glyph]. */
+    val framedGlyph: String get() = frameGlyph(glyph)
+}
+
+private const val CARD_ART_W = 19
+private const val CARD_ART_H = 16
+
+/**
+ * The deck's art is inconsistent by origin: minors ship as their own 13-wide
+ * boxes (5-7 rows) and majors as freeform figures (9-19 wide, 10-16 rows).
+ * This strips a minor's own box, centers the art as a block (relative layout
+ * preserved) on a CARD_ART_W x CARD_ART_H canvas -- the largest major -- and
+ * draws one shared frame around it. Output is always 23 columns x 18 rows.
+ */
+internal fun frameGlyph(raw: String): String {
+    var rows = raw.lines().map { it.trimEnd() }
+    if (rows.size > 2 && rows.first().startsWith(".-") && rows.last().startsWith("'-")) {
+        rows = rows.subList(1, rows.size - 1)
+            .map { it.removePrefix("|").removeSuffix("|").trimEnd() }
+    }
+    rows = rows.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }
+    val indent = rows.filter { it.isNotBlank() }
+        .minOfOrNull { r -> r.length - r.trimStart().length } ?: 0
+    rows = rows.map { it.drop(indent) }
+    val blockW = rows.maxOfOrNull { it.length } ?: 0
+    val left = ((CARD_ART_W - blockW) / 2).coerceAtLeast(0)
+    val top = ((CARD_ART_H - rows.size) / 2).coerceAtLeast(0)
+    val bottom = (CARD_ART_H - rows.size - top).coerceAtLeast(0)
+    val blank = " ".repeat(CARD_ART_W)
+    val canvas = List(top) { blank } +
+        rows.map { (" ".repeat(left) + it).padEnd(CARD_ART_W) } +
+        List(bottom) { blank }
+    val edge = "-".repeat(CARD_ART_W + 2)
+    return (listOf(".$edge.") + canvas.map { "| $it |" } + listOf("'$edge'"))
+        .joinToString("\n")
+}
 
 object TarotDeck {
 
