@@ -37,11 +37,16 @@ fun SettingsScreen(
     onOpenGuidedSessions: () -> Unit,
     onResetDailyQuote: () -> Unit
 ) {
-    val daily by viewModel.dailyItems.collectAsState()
-    val weekly by viewModel.weeklyItems.collectAsState()
-    val standing by viewModel.standingItems.collectAsState()
-    val mindset by viewModel.mindsetItems.collectAsState()
-    val allDirectives = daily + weekly + standing + mindset
+    // One query instead of stitching four zone flows together -- and it
+    // includes 🔥 HARD objectives, which the zone list would have missed.
+    val allDirectives by viewModel.allDirectives.collectAsState()
+    val listed = remember(allDirectives) {
+        val order = listOf(Zone.DAILY, Zone.WEEKLY, Zone.STANDING, Zone.HARD, Zone.MINDSET)
+        allDirectives.sortedWith(compareBy<Directive> { order.indexOf(it.zone) }.thenBy { it.sortOrder })
+    }
+    val places by viewModel.geofencePlaces.collectAsState()
+    val placeNames = remember(places) { places.associate { it.id to it.label } }
+    var confirmDelete by remember { mutableStateOf<Directive?>(null) }
     val prefs by viewModel.notificationPrefs.collectAsState()
     val context = LocalContext.current
     var currentTheme by remember { mutableStateOf(com.evyr.rebuild.IconSwitcher.currentTheme(context)) }
@@ -177,12 +182,14 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(4.dp))
             }
-            items(allDirectives) { d ->
+            items(listed, key = { it.id }) { d ->
                 DirectiveEditRow(
                     directive = d,
                     onEdit = { editingDirective = d },
                     onReminders = { managingRemindersFor = d },
-                    onDelete = { viewModel.deleteDirective(d) }
+                    // Was a one-tap, no-confirm delete that also wiped history.
+                    onDelete = { confirmDelete = d },
+                    placeLabel = d.placeId?.let { placeNames[it] }
                 )
             }
             item { Spacer(Modifier.height(8.dp)) }
@@ -203,6 +210,7 @@ fun SettingsScreen(
     if (showAddDialog) {
         DirectiveEditDialog(
             existing = null,
+            places = places,
             onDismiss = { showAddDialog = false },
             onSave = { viewModel.addDirective(it); showAddDialog = false }
         )
@@ -211,8 +219,34 @@ fun SettingsScreen(
     editingDirective?.let { d ->
         DirectiveEditDialog(
             existing = d,
+            places = places,
             onDismiss = { editingDirective = null },
             onSave = { viewModel.addDirective(it); editingDirective = null }
+        )
+    }
+
+    confirmDelete?.let { d ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            containerColor = NervPanel,
+            title = { Text("DELETE DIRECTIVE?", fontFamily = TerminalFontFamily, color = NervRed) },
+            text = {
+                Text(
+                    "\"${d.title}\" and its reminders and streak go with it. Can't be undone.",
+                    fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 12.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteDirective(d, context)
+                    confirmDelete = null
+                }) { Text("DELETE", fontFamily = TerminalFontFamily, color = NervRed) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = null }) {
+                    Text("CANCEL", fontFamily = TerminalFontFamily, color = NervDim)
+                }
+            }
         )
     }
 

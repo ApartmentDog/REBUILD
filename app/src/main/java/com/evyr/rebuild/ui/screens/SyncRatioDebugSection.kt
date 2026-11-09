@@ -47,6 +47,7 @@ fun SyncRatioDebugPanel(viewModel: MainViewModel) {
                 "STANDING COUNT: ${b.standingCount}",
                 "STREAKS HELD: ${b.heldCount}",
                 "STREAK SCORE: ${"%.3f".format(b.streakScore)}",
+                "🔥 BOOST: +${"%.1f".format(b.hardBoost)}",
                 "FINAL: ${b.finalPercent}%"
             )
             lines.forEach {

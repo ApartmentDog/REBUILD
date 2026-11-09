@@ -154,6 +154,22 @@ class NotificationHelper(private val context: Context) {
         NotificationManagerCompat.from(context).notify(NOTIF_ID_ARRIVAL, notification)
     }
 
+    /** Objectives tied to a place, shown when you arrive there. One
+     *  notification per place (4000 + placeId) so places don't overwrite each other. */
+    fun showPlaceObjectives(placeId: Long, placeLabel: String, titles: List<String>) {
+        val body = titles.joinToString("\n")
+        val notification = NotificationCompat.Builder(context, CHANNEL_GEOFENCE)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("📍 At $placeLabel — ${titles.size} objective${if (titles.size == 1) "" else "s"}")
+            .setContentText(titles.joinToString(", "))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(openAppIntent())
+            .build()
+        NotificationManagerCompat.from(context).notify(4000 + placeId.toInt(), notification)
+    }
+
     fun showMorningSummary(dueCount: Int) {
         val notification = NotificationCompat.Builder(context, CHANNEL_DAILY_QUOTE)
             .setSmallIcon(R.drawable.ic_notification)

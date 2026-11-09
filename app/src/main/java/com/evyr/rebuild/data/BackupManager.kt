@@ -110,15 +110,8 @@ object BackupManager {
             envelope.scanProgress.forEach { db.dailyScanProgressDao().upsert(it) }
             envelope.placeDirectives.forEach { db.geofencePlaceDirectiveDao().link(it) }
             envelope.volumeProgress.forEach { db.dailyVolumeProgressDao().upsert(it) }
-            // Known gap: this writes reminders to the database but does not
-            // re-arm their AlarmManager alarms -- applyEnvelope has no Context
-            // to call ReminderScheduler with, and widening this function's
-            // signature is a larger change than this pass covers. A restored
-            // reminder will show correctly in the app but won't actually fire
-            // until its directive's reminder is toggled off and back on (which
-            // does schedule it) or the phone reboots (BootReceiver reschedules
-            // every enabled reminder). Flagging this plainly rather than
-            // pretending restore fully re-arms everything.
+            // Alarms are re-armed by the caller afterwards
+            // (MainViewModel.rearmAfterRestore), which has the Context this lacks.
             envelope.reminders.forEach { db.reminderDao().upsert(it) }
         }
     }

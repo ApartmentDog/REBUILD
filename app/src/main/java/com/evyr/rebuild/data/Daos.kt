@@ -17,6 +17,15 @@ interface DirectiveDao {
     @Delete
     suspend fun delete(directive: Directive)
 
+    @Query("SELECT * FROM directives WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): Directive?
+
+    @Query("SELECT * FROM directives ORDER BY zone, sortOrder")
+    suspend fun getAll(): List<Directive>
+
+    @Query("UPDATE directives SET placeId = NULL WHERE placeId = :placeId")
+    suspend fun clearPlace(placeId: Long)
+
     @Query("UPDATE directives SET locked = :locked WHERE id = :id")
     suspend fun setLocked(id: Long, locked: Boolean)
 }
@@ -32,6 +41,18 @@ interface CompletionDao {
     @Query("SELECT * FROM completions")
     suspend fun getAll(): List<Completion>
 
+    @Query("SELECT * FROM completions WHERE date = :date")
+    suspend fun getForDate(date: String): List<Completion>
+
+    @Query("SELECT COUNT(*) FROM completions")
+    fun observeCount(): Flow<Int>
+
+    @Query("SELECT MAX(completedAtEpochMs) FROM completions WHERE directiveId = :directiveId")
+    suspend fun latestCompletedAt(directiveId: Long): Long?
+
+    @Query("DELETE FROM completions WHERE directiveId = :directiveId")
+    suspend fun clearAllFor(directiveId: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(completion: Completion)
 
@@ -43,6 +64,9 @@ interface CompletionDao {
 interface StreakDao {
     @Query("SELECT * FROM streaks WHERE directiveId = :directiveId")
     suspend fun get(directiveId: Long): Streak?
+
+    @Query("DELETE FROM streaks WHERE directiveId = :directiveId")
+    suspend fun deleteFor(directiveId: Long)
 
     @Query("SELECT * FROM streaks")
     fun observeAll(): Flow<List<Streak>>
@@ -189,6 +213,9 @@ interface GeofencePlaceDirectiveDao {
 
     @Query("DELETE FROM geofence_place_directives WHERE placeId = :placeId")
     suspend fun clearForPlace(placeId: Long)
+
+    @Query("DELETE FROM geofence_place_directives WHERE directiveId = :directiveId")
+    suspend fun clearForDirective(directiveId: Long)
 }
 
 @Dao

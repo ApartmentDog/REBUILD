@@ -165,6 +165,7 @@ fun BackupField(viewModel: MainViewModel) {
                     scope.launch {
                         when (val r = viewModel.restoreArchive(context, uri)) {
                             is com.evyr.rebuild.data.BackupArchive.Result.Success -> {
+                                viewModel.rearmAfterRestore(context)
                                 message = "Restored ${r.rowCount} rows, ${r.mediaCount} media files — restart the app"
                                 isError = false
                             }

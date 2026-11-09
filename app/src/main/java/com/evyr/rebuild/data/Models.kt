@@ -5,7 +5,7 @@ import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
 @Serializable
-enum class Zone { DAILY, WEEKLY, STANDING, MINDSET }
+enum class Zone { DAILY, WEEKLY, STANDING, MINDSET, HARD }
 
 /**
  * How a directive recurs, beyond the coarse DAILY/WEEKLY zone split. NONE means
@@ -66,7 +66,16 @@ data class Directive(
     // a checkbox or tap count, the user types in an amount and the bar fills as
     // a percentage of this target. Null means "not a volume tracker" -- every
     // existing directive keeps its current checkbox/tap behavior untouched.
-    val targetOz: Int? = null
+    val targetOz: Int? = null,
+    // Location-specific objective: the geofence place this belongs to. Shown
+    // with its place on the Dashboard, floated to the top while you're there,
+    // and included in the arrival nudge for that place. Null = anywhere.
+    val placeId: Long? = null,
+    // HARD zone only. One-time 🔥 objectives: cleared once, never reset.
+    // hardBoost is the Sync Ratio bonus (in points) it grants when cleared;
+    // it decays to zero over a week, and stacks past 100.
+    val hardBoost: Int = 0,
+    val hardClearedEpochMs: Long? = null
 )
 
 /**
@@ -135,7 +144,10 @@ data class Streak(
     val currentStreakDays: Int = 0,
     val bestStreakDays: Int = 0,
     val lastBrokenEpochMs: Long? = null,
-    val lastBrokenNote: String? = null
+    val lastBrokenNote: String? = null,
+    // yyyy-MM-dd of the last HOLD. Stops HOLD being tapped repeatedly in one
+    // day to inflate the streak count.
+    val lastHeldDate: String? = null
 )
 
 /**

@@ -49,8 +49,27 @@ fun DashboardScreen(
     val standing by viewModel.standingItems.collectAsState()
     val completions by viewModel.todayCompletions.collectAsState()
     val streaks by viewModel.streaks.collectAsState()
+    val hard by viewModel.hardItems.collectAsState()
+    val places by viewModel.geofencePlaces.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-    val completedIds = completions.map { it.directiveId }.toSet()
+    val completedIds = remember(completions) { completions.map { it.directiveId }.toSet() }
+    val placeNames = remember(places) { places.associate { it.id to it.label } }
+    // Places the phone is currently inside, from the geofence ENTER/EXIT state.
+    // Re-read when places or completions change -- cheap prefs lookups.
+    val herePlaceIds = remember(places, completions) {
+        places.filter { com.evyr.rebuild.location.GeofencePresence.isInside(context, it.id) == true }
+            .map { it.id }.toSet()
+    }
+    val today = viewModel.todayKey()
+
+    // The sealed code: revealed once, the first time the 5th 🔥 clear lands.
+    val vault = remember { com.evyr.rebuild.data.HardModeVault(context) }
+    val clearedHard = hard.count { it.hardClearedEpochMs != null }
+    var showReveal by remember { mutableStateOf(false) }
+    LaunchedEffect(clearedHard) {
+        if (vault.isUnlocked(clearedHard) && vault.consumeReveal()) showReveal = true
+    }
 
     Column(
         modifier = Modifier
@@ -163,7 +182,7 @@ fun DashboardScreen(
             Spacer(Modifier.height(8.dp))
         }
 
-        val zoneTitles = listOf("DAILY", "WEEKLY", "STANDING", "SESSIONS")
+        val zoneTitles = listOf("DAILY", "WEEKLY", "STANDING", "🔥 HARD", "SESSIONS")
         var selectedZone by remember { mutableStateOf(0) }
         var selectedSessionType by remember { mutableStateOf<com.evyr.rebuild.data.SessionType?>(null) }
 
@@ -208,7 +227,7 @@ fun DashboardScreen(
         // directly rather than nested inside the LazyColumn below -- a
         // LazyColumn inside another LazyColumn's item{} doesn't size correctly.
         when (selectedZone) {
-            3 -> GuidedSessionContent(
+            4 -> GuidedSessionContent(
                 viewModel = viewModel,
                 selectedType = selectedSessionType,
                 onTypeSelected = { selectedSessionType = it },
@@ -221,7 +240,9 @@ fun DashboardScreen(
             ) {
                 when (selectedZone) {
                     0 -> item {
+                        // Location objectives for wherever you are right now go first.
                         val dueDaily = daily.filter { viewModel.isDueToday(it) }
+                            .sortedBy { if (it.placeId != null && it.placeId in herePlaceIds) 0 else 1 }
                         val tapTrackers = dueDaily.filter { it.requiredScans > 1 && !it.locked }
                         val volumeTrackers = dueDaily.filter { it.targetOz != null && !it.locked }
                         if (tapTrackers.isNotEmpty()) {
@@ -284,6 +305,8 @@ fun DashboardScreen(
                                     directive = d,
                                     isDone = completedIds.contains(d.id),
                                     scansSoFar = scanProgress[d.id] ?: 0,
+                                    placeLabel = d.placeId?.let { placeNames[it] },
+                                    isHere = d.placeId != null && d.placeId in herePlaceIds,
                                     onToggle = { viewModel.toggleComplete(d, it) },
                                     onUnlock = { viewModel.unlockDirective(d.id) },
                                     onTapProgress = { viewModel.tapProgress(it) }
@@ -293,6 +316,7 @@ fun DashboardScreen(
                     }
                     1 -> item {
                         val dueWeekly = weekly.filter { viewModel.isDueToday(it) }
+                            .sortedBy { if (it.placeId != null && it.placeId in herePlaceIds) 0 else 1 }
                         ZonePanel(title = "WEEKLY") {
                             if (weekly.isEmpty()) {
                                 Text(
@@ -324,6 +348,8 @@ fun DashboardScreen(
                                     directive = d,
                                     isDone = completedIds.contains(d.id),
                                     scansSoFar = scanProgress[d.id] ?: 0,
+                                    placeLabel = d.placeId?.let { placeNames[it] },
+                                    isHere = d.placeId != null && d.placeId in herePlaceIds,
                                     onToggle = { viewModel.toggleComplete(d, it) },
                                     onUnlock = {},
                                     onTapProgress = { viewModel.tapProgress(it) }
@@ -338,12 +364,22 @@ fun DashboardScreen(
                                 StreakRow(
                                     directive = d,
                                     streak = streak,
+                                    heldToday = streak?.lastHeldDate == today,
                                     viewModel = viewModel,
                                     onConfirmToday = { viewModel.confirmStreak(d.id) },
                                     onBreak = { note -> viewModel.breakStreak(d.id, note) }
                                 )
                             }
                         }
+                    }
+                    3 -> item {
+                        HardObjectivesPanel(
+                            items = hard,
+                            placeNames = placeNames,
+                            herePlaceIds = herePlaceIds,
+                            unlocked = vault.isUnlocked(clearedHard),
+                            viewModel = viewModel
+                        )
                     }
                 }
             }
@@ -377,6 +413,168 @@ fun DashboardScreen(
         VersionFooter(compact = true, onSecretTap = onOpenSecretPrompt, modifier = Modifier.padding(horizontal = 20.dp))
         Spacer(Modifier.height(8.dp))
     }
+
+    if (showReveal) {
+        AlertDialog(
+            onDismissRequest = { showReveal = false },
+            containerColor = EvaPanelBg,
+            title = {
+                Text("🔥 5 / 5 — SEAL BROKEN", fontFamily = TerminalFontFamily, color = HardOrange, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text("NEW CODE ACQUIRED", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp, letterSpacing = 2.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        com.evyr.rebuild.data.HardModeVault.CODE,
+                        fontFamily = TerminalFontFamily, color = EvaYellow, fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold, letterSpacing = 6.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("Enter it where the other codes go.", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showReveal = false }) {
+                    Text("ACKNOWLEDGED", fontFamily = TerminalFontFamily, color = EvaGreen, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+}
+
+private val HardOrange = Color(0xFFFF6A00)
+
+/**
+ * 🔥 one-time objectives. Active ones on top with a CLEAR button (confirmed --
+ * it's permanent), cleared ones below as a record with their remaining boost.
+ * A cleared objective can be undone the same day only, for misfires.
+ */
+@Composable
+private fun HardObjectivesPanel(
+    items: List<Directive>,
+    placeNames: Map<Long, String>,
+    herePlaceIds: Set<Long>,
+    unlocked: Boolean,
+    viewModel: MainViewModel
+) {
+    val active = items.filter { it.hardClearedEpochMs == null && !it.locked }
+        .sortedBy { if (it.placeId != null && it.placeId in herePlaceIds) 0 else 1 }
+    val cleared = items.filter { it.hardClearedEpochMs != null }
+    var confirming by remember { mutableStateOf<Directive?>(null) }
+    val required = com.evyr.rebuild.data.HardModeVault.REQUIRED
+
+    EvaPanel(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            // Progress toward the sealed code. Never says what it is.
+            val n = cleared.size.coerceAtMost(required)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    (1..required).joinToString("") { if (it <= n || unlocked) "🔥" else "·" },
+                    fontSize = 14.sp, letterSpacing = 2.sp
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (unlocked) "SEAL BROKEN — CODE ACQUIRED" else "SEALED · $n / $required",
+                    fontFamily = TerminalFontFamily,
+                    color = if (unlocked) EvaYellow else EvaTextDim,
+                    fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+
+            if (active.isEmpty()) {
+                Text(
+                    "No active hard objectives. Add one in Settings — pick the 🔥 zone.",
+                    fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp
+                )
+            }
+            active.forEach { d ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🔥", fontSize = 16.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            d.title.uppercase(),
+                            fontFamily = TerminalFontFamily, color = EvaTextPrimary,
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "+${d.hardBoost}% SYNC" + (d.placeId?.let { placeNames[it] }?.let { " · 📍 ${it.uppercase()}" } ?: "") +
+                                if (d.placeId != null && d.placeId in herePlaceIds) " · YOU'RE HERE" else "",
+                            fontFamily = TerminalFontFamily, color = HardOrange, fontSize = 9.sp
+                        )
+                        d.expandableContent?.let {
+                            Text(it, fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
+                        }
+                    }
+                    TextButton(onClick = { confirming = d }) {
+                        Text("CLEAR", fontFamily = TerminalFontFamily, color = HardOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (cleared.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                HazardStripe(height = 4.dp)
+                Spacer(Modifier.height(6.dp))
+                Text("CLEARED", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp, letterSpacing = 2.sp)
+                cleared.forEach { d ->
+                    val boost = viewModel.hardBoostNow(d)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                d.title.uppercase(),
+                                fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp,
+                                textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                            )
+                            Text(
+                                if (boost > 0f) "BOOST ACTIVE +${"%.1f".format(boost)}%" else "BOOST SPENT",
+                                fontFamily = TerminalFontFamily,
+                                color = if (boost > 0f) HardOrange else EvaTextDim, fontSize = 9.sp
+                            )
+                        }
+                        if (viewModel.isClearedToday(d)) {
+                            TextButton(onClick = { viewModel.unclearHardObjective(d.id) }) {
+                                Text("UNDO", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    confirming?.let { d ->
+        AlertDialog(
+            onDismissRequest = { confirming = null },
+            containerColor = EvaPanelBg,
+            title = { Text("🔥 CLEAR OBJECTIVE?", fontFamily = TerminalFontFamily, color = HardOrange, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "${d.title.uppercase()}\n\nOne-time. +${d.hardBoost}% Sync Ratio, fading over a week.",
+                    fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 12.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.clearHardObjective(d.id)
+                    confirming = null
+                }) { Text("CLEARED", fontFamily = TerminalFontFamily, color = HardOrange, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirming = null }) {
+                    Text("NOT YET", fontFamily = TerminalFontFamily, color = EvaTextDim)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -399,11 +597,13 @@ private fun CheckableRow(
     directive: Directive,
     isDone: Boolean,
     scansSoFar: Int = 0,
+    placeLabel: String? = null,
+    isHere: Boolean = false,
     onToggle: (Boolean) -> Unit,
     onUnlock: () -> Unit,
     onTapProgress: (Long) -> Unit = {}
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by remember(directive.id) { mutableStateOf(false) }
     val manualToggleBlocked = directive.requiresNfcScan && !directive.locked
 
     Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -447,6 +647,15 @@ private fun CheckableRow(
                     tint = EvaTextDim
                 )
             }
+        }
+        if (placeLabel != null) {
+            Text(
+                text = "📍 ${placeLabel.uppercase()}" + if (isHere) " · YOU'RE HERE" else "",
+                fontFamily = TerminalFontFamily,
+                color = if (isHere && !isDone) EvaYellow else EvaTextDim,
+                fontSize = 9.sp,
+                modifier = Modifier.padding(start = 36.dp)
+            )
         }
         if (directive.locked) {
             Text(
@@ -493,6 +702,7 @@ private fun CheckableRow(
 private fun StreakRow(
     directive: Directive,
     streak: Streak?,
+    heldToday: Boolean,
     viewModel: MainViewModel,
     onConfirmToday: () -> Unit,
     onBreak: (String?) -> Unit
@@ -540,8 +750,14 @@ private fun StreakRow(
                 )
             }
         }
-        TextButton(onClick = onConfirmToday) {
-            Text("HOLD", fontFamily = TerminalFontFamily, color = EvaGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        // Once a day: the repository ignores a second HOLD, so the button says so.
+        TextButton(onClick = onConfirmToday, enabled = !heldToday) {
+            Text(
+                if (heldToday) "HELD" else "HOLD",
+                fontFamily = TerminalFontFamily,
+                color = if (heldToday) EvaTextDim else EvaGreen,
+                fontSize = 11.sp, fontWeight = FontWeight.Bold
+            )
         }
         TextButton(onClick = { showBreakDialog = true }) {
             Text("BREAK", fontFamily = TerminalFontFamily, color = EvaRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)

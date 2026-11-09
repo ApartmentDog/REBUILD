@@ -1,15 +1,60 @@
 package com.evyr.rebuild.data
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppRepository(private val db: RebuildDatabase) {
 
-    private val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    fun todayKey(): String = dateFmt.format(Date())
+    // SimpleDateFormat isn't thread-safe, and this repository is hit from the
+    // UI, workers, the widget and receivers concurrently. A shared instance can
+    // hand back a corrupted date string under contention, which would file a
+    // completion under the wrong day. One formatter per thread instead.
+    private val dateFmt = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue() = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    }
+    private fun dateKey(date: Date): String = dateFmt.get()!!.format(date)
+    fun todayKey(): String = dateKey(Date())
+
+    /**
+     * Today's date key, re-emitted when the date changes. The "today" flows
+     * used to bake in the date once, when first collected -- so with the app
+     * left open past midnight the dashboard kept showing yesterday's ticks
+     * and tap counts until it was restarted.
+     */
+    fun observeTodayKey(): Flow<String> = flow {
+        while (true) {
+            emit(todayKey())
+            val next = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 1); set(Calendar.MILLISECOND, 0)
+            }
+            // Capped so a clock or timezone change is picked up within a minute.
+            delay((next.timeInMillis - System.currentTimeMillis()).coerceIn(1_000L, 60_000L))
+        }
+    }.distinctUntilChanged()
+
+    /** Whole calendar days between two instants (local time), ignoring the
+     *  time of day -- 11pm yesterday to 8am today is 1 day, not 0. */
+    private fun calendarDaysBetween(fromMs: Long, to: Calendar): Int {
+        val a = Calendar.getInstance().apply {
+            timeInMillis = fromMs
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        val b = (to.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        // Round rather than truncate: DST days are 23h or 25h long.
+        return Math.round((b.timeInMillis - a.timeInMillis) / 86_400_000.0).toInt()
+    }
 
     /**
      * Whether [directive] is due today, given its zone and recurrence settings.
@@ -40,8 +85,12 @@ class AppRepository(private val db: RebuildDatabase) {
                     // Never completed yet -- due immediately rather than waiting a
                     // full interval from a start date the person never set.
                     ?: return true
-                val daysSince = ((now.timeInMillis - last) / (1000L * 60 * 60 * 24)).toInt()
-                daysSince >= interval
+                // Calendar days, not 24h blocks: the old millisecond division
+                // meant something done at 11pm wasn't due again on an every-1-day
+                // cycle until 11pm the next day. And a completion today keeps it
+                // listed (as done) instead of vanishing the moment it's ticked.
+                val daysSince = calendarDaysBetween(last, now)
+                daysSince == 0 || daysSince >= interval
             }
             RecurrenceType.MONTHLY -> {
                 val targetDay = directive.recurrenceDayOfMonth ?: return true
@@ -98,6 +147,11 @@ class AppRepository(private val db: RebuildDatabase) {
     suspend fun deleteDirective(directive: Directive): List<Reminder> {
         val reminders = db.reminderDao().getForDirective(directive.id)
         reminders.forEach { db.reminderDao().delete(it) }
+        // Nothing has a foreign key, so everything keyed on this id is cleaned
+        // up by hand. Left behind, a reused autoincrement id would never be hit,
+        // but the place checklist and streak rows would sit there forever.
+        db.geofencePlaceDirectiveDao().clearForDirective(directive.id)
+        db.streakDao().deleteFor(directive.id)
         db.directiveDao().delete(directive)
         return reminders
     }
@@ -107,7 +161,7 @@ class AppRepository(private val db: RebuildDatabase) {
     // ---------- Completions ----------
 
     fun observeCompletionsForToday(): Flow<List<Completion>> =
-        db.completionDao().observeForDate(todayKey())
+        observeTodayKey().flatMapLatest { db.completionDao().observeForDate(it) }
 
     suspend fun markComplete(directiveId: Long, source: String = "manual") {
         db.completionDao().upsert(
@@ -120,23 +174,75 @@ class AppRepository(private val db: RebuildDatabase) {
         )
         // Needed for RecurrenceType.INTERVAL, which counts "N days since last
         // completed" rather than from a fixed calendar anchor.
-        db.directiveDao().observeAll().first().find { it.id == directiveId }?.let { directive ->
+        db.directiveDao().getById(directiveId)?.let { directive ->
             db.directiveDao().upsert(directive.copy(lastCompletedEpochMs = System.currentTimeMillis()))
         }
     }
 
+    /**
+     * Unticks today. Also resets today's tap/volume progress -- previously the
+     * counter stayed at its target, so the next tap was ignored as "already
+     * done" and a multi-tap directive could never be completed again that day.
+     * lastCompletedEpochMs is rolled back to the previous real completion, so
+     * an accidental tick doesn't push an every-N-days directive out N days.
+     */
     suspend fun markIncomplete(directiveId: Long) {
-        db.completionDao().clear(directiveId, todayKey())
+        val today = todayKey()
+        db.completionDao().clear(directiveId, today)
+        db.dailyScanProgressDao().clear(directiveId, today)
+        db.dailyVolumeProgressDao().clear(directiveId, today)
+        db.directiveDao().getById(directiveId)?.let { directive ->
+            val previous = db.completionDao().latestCompletedAt(directiveId)
+            db.directiveDao().upsert(directive.copy(lastCompletedEpochMs = previous))
+        }
     }
+
+    // ---------- 🔥 Hard objectives ----------
+
+    /** Clears a one-time hard objective for good. Logged as a completion too,
+     *  so it counts toward the all-time tally like anything else. */
+    suspend fun clearHardObjective(directiveId: Long) {
+        val d = db.directiveDao().getById(directiveId) ?: return
+        if (d.zone != Zone.HARD || d.hardClearedEpochMs != null) return
+        val now = System.currentTimeMillis()
+        db.directiveDao().upsert(d.copy(hardClearedEpochMs = now, lastCompletedEpochMs = now))
+        db.completionDao().upsert(Completion(directiveId, todayKey(), now, source = "hard"))
+    }
+
+    /** Undo, only offered the same day it was cleared (a misfire, not a do-over). */
+    suspend fun unclearHardObjective(directiveId: Long) {
+        val d = db.directiveDao().getById(directiveId) ?: return
+        if (d.zone != Zone.HARD) return
+        db.directiveDao().upsert(d.copy(hardClearedEpochMs = null, lastCompletedEpochMs = null))
+        db.completionDao().clearAllFor(directiveId)
+    }
+
+    fun isClearedToday(d: Directive): Boolean =
+        d.hardClearedEpochMs?.let { dateKey(Date(it)) == todayKey() } ?: false
+
+    /** Current boost from one cleared hard objective: full on the day it's
+     *  cleared, fading linearly to nothing after 7 days. */
+    fun hardBoostNow(d: Directive, now: Calendar = Calendar.getInstance()): Float {
+        val cleared = d.hardClearedEpochMs ?: return 0f
+        val days = calendarDaysBetween(cleared, now)
+        if (days < 0 || days >= HARD_BOOST_DAYS) return 0f
+        return d.hardBoost * (1f - days.toFloat() / HARD_BOOST_DAYS)
+    }
+
+    fun observeCompletionCount(): Flow<Int> = db.completionDao().observeCount()
 
     // ---------- Streaks (Standing directives) ----------
 
     /** Call once per day per standing directive to confirm it held. Breaking requires an explicit call to breakStreak. */
     suspend fun confirmStreakHeldToday(directiveId: Long) {
         val existing = db.streakDao().get(directiveId) ?: Streak(directiveId = directiveId)
+        val today = todayKey()
+        // Once a day. HOLD could be tapped repeatedly before, adding a day each time.
+        if (existing.lastHeldDate == today) return
         val updated = existing.copy(
             currentStreakDays = existing.currentStreakDays + 1,
-            bestStreakDays = maxOf(existing.bestStreakDays, existing.currentStreakDays + 1)
+            bestStreakDays = maxOf(existing.bestStreakDays, existing.currentStreakDays + 1),
+            lastHeldDate = today
         )
         db.streakDao().upsert(updated)
     }
@@ -157,7 +263,8 @@ class AppRepository(private val db: RebuildDatabase) {
             existing.copy(
                 currentStreakDays = 0,
                 lastBrokenEpochMs = System.currentTimeMillis(),
-                lastBrokenNote = note
+                lastBrokenNote = note,
+                lastHeldDate = null
             )
         )
         if (note != null) {
@@ -234,7 +341,7 @@ class AppRepository(private val db: RebuildDatabase) {
      * marks the directive complete the moment the target is reached.
      */
     suspend fun incrementScanProgress(directiveId: Long, source: String): ScanOutcome? {
-        val directive = db.directiveDao().observeAll().first().find { it.id == directiveId } ?: return null
+        val directive = db.directiveDao().getById(directiveId) ?: return null
         val required = directive.requiredScans.coerceAtLeast(1)
 
         if (required <= 1) {
@@ -266,7 +373,7 @@ class AppRepository(private val db: RebuildDatabase) {
      */
     suspend fun logVolumeProgress(directiveId: Long, amountOz: Int): ScanOutcome? {
         if (amountOz <= 0) return null
-        val directive = db.directiveDao().observeAll().first().find { it.id == directiveId } ?: return null
+        val directive = db.directiveDao().getById(directiveId) ?: return null
         val target = directive.targetOz?.coerceAtLeast(1) ?: return null
 
         val today = todayKey()
@@ -281,7 +388,7 @@ class AppRepository(private val db: RebuildDatabase) {
     }
 
     fun observeVolumeProgressToday(): Flow<Map<Long, Int>> =
-        db.dailyVolumeProgressDao().observeForDate(todayKey())
+        observeTodayKey().flatMapLatest { db.dailyVolumeProgressDao().observeForDate(it) }
             .map { list -> list.associate { it.directiveId to it.loggedOz } }
 
     // ---------- Hidden section media ----------
@@ -306,7 +413,7 @@ class AppRepository(private val db: RebuildDatabase) {
     }
 
     fun observeScanProgressToday(): Flow<Map<Long, Int>> =
-        db.dailyScanProgressDao().observeForDate(todayKey())
+        observeTodayKey().flatMapLatest { db.dailyScanProgressDao().observeForDate(it) }
             .map { list -> list.associate { it.directiveId to it.count } }
 
     /** One-shot snapshot for callers outside a composition (the widget), same
@@ -332,9 +439,9 @@ class AppRepository(private val db: RebuildDatabase) {
         val directiveIds = nfcLinkedIds + placeIds
         if (directiveIds.isEmpty()) return emptyList()
 
-        val directives = db.directiveDao().observeAll().first()
+        val directives = db.directiveDao().getAll()
             .filter { it.id in directiveIds }
-        val todaysCompletions = db.completionDao().observeForDate(todayKey()).first()
+        val todaysCompletions = db.completionDao().getForDate(todayKey())
         val completedAfter = todaysCompletions
             .filter { it.completedAtEpochMs >= sinceEpochMs }
             .map { it.directiveId }
@@ -406,7 +513,7 @@ class AppRepository(private val db: RebuildDatabase) {
 
     /** True if the Fry Scream directive is still locked (gated behind daily consistency). */
     suspend fun isFryScreamLocked(): Boolean =
-        db.directiveDao().observeAll().first().find { it.title == "Fry Scream Basics" }?.locked ?: true
+        db.directiveDao().getAll().find { it.title == "Fry Scream Basics" }?.locked ?: true
 
     suspend fun logSession(type: SessionType, startedAtEpochMs: Long, stepsCompleted: Int, stepsTotal: Int, notes: String? = null) {
         db.sessionLogDao().upsert(
@@ -436,7 +543,7 @@ class AppRepository(private val db: RebuildDatabase) {
 
     /** When this directive was last completed today, or null if it hasn't been. */
     suspend fun completedAtToday(directiveId: Long): Long? =
-        db.completionDao().observeForDate(todayKey()).first()
+        db.completionDao().getForDate(todayKey())
             .find { it.directiveId == directiveId }?.completedAtEpochMs
 
     /** Reminders that fire on entering or leaving a given place. */
@@ -535,7 +642,7 @@ class AppRepository(private val db: RebuildDatabase) {
         for (i in 0 until lookbackDays) {
             cal.time = Date()
             cal.add(Calendar.DAY_OF_YEAR, -i)
-            val dateKey = dateFmt.format(cal.time)
+            val dateKey = dateKey(cal.time)
             if (dateKey < earliestDate) break // walking backward past the directive's start
             val weekday = cal.get(Calendar.DAY_OF_WEEK)
             if (dateKey !in completionDates) {
@@ -557,7 +664,26 @@ class AppRepository(private val db: RebuildDatabase) {
 
     suspend fun addGeofencePlace(place: GeofencePlace) = db.geofencePlaceDao().upsert(place)
 
-    suspend fun deleteGeofencePlace(place: GeofencePlace) = db.geofencePlaceDao().delete(place)
+    /** Also detaches anything pointing at the place, so a location objective
+     *  falls back to "anywhere" instead of naming a place that's gone. */
+    suspend fun deleteGeofencePlace(place: GeofencePlace) {
+        db.geofencePlaceDirectiveDao().clearForPlace(place.id)
+        db.directiveDao().clearPlace(place.id)
+        db.geofencePlaceDao().delete(place)
+    }
+
+    /** Location objectives tied to [placeId] that still need doing: due today
+     *  and not done yet, or an uncleared 🔥 objective. */
+    suspend fun pendingObjectivesForPlace(placeId: Long): List<Directive> {
+        val done = db.completionDao().getForDate(todayKey()).map { it.directiveId }.toSet()
+        val now = Calendar.getInstance()
+        return db.directiveDao().getAll().filter { d ->
+            d.placeId == placeId && !d.locked && when (d.zone) {
+                Zone.HARD -> d.hardClearedEpochMs == null
+                else -> isDueToday(d, now) && d.id !in done
+            }
+        }
+    }
 
     // ---------- Sync Ratio ----------
 
@@ -579,12 +705,13 @@ class AppRepository(private val db: RebuildDatabase) {
         val standingCount: Int,
         val heldCount: Int,
         val streakScore: Float,
+        val hardBoost: Float,
         val finalPercent: Int
     )
 
     suspend fun computeSyncRatioBreakdown(): SyncRatioBreakdown {
-        val directives = db.directiveDao().observeAll().first()
-        val completions = db.completionDao().observeForDate(todayKey()).first()
+        val directives = db.directiveDao().getAll()
+        val completions = db.completionDao().getForDate(todayKey())
         val streaks = db.streakDao().observeAll().first()
         val completedIds = completions.map { it.directiveId }.toSet()
 
@@ -603,6 +730,10 @@ class AppRepository(private val db: RebuildDatabase) {
         val streakScore = if (standingDirectives.isEmpty()) 1f else heldCount.toFloat() / standingDirectives.size
 
         val combo = (completionScore * 0.7f) + (streakScore * 0.3f)
+        val base = (combo * 100).toInt().coerceIn(0, 100)
+        // 🔥 boosts sit on top of the normal 0-100 score, so stacking cleared
+        // hard objectives is the only way past 100. Capped at 400.
+        val boost = directives.filter { it.zone == Zone.HARD }.sumOf { hardBoostNow(it, now).toDouble() }.toFloat()
         return SyncRatioBreakdown(
             dueCount = dueToday.size,
             totalWeight = totalWeight,
@@ -611,7 +742,8 @@ class AppRepository(private val db: RebuildDatabase) {
             standingCount = standingDirectives.size,
             heldCount = heldCount,
             streakScore = streakScore,
-            finalPercent = (combo * 100).toInt().coerceIn(0, 100)
+            hardBoost = boost,
+            finalPercent = (base + boost.toInt()).coerceIn(0, MAX_SYNC)
         )
     }
 
@@ -649,8 +781,7 @@ class AppRepository(private val db: RebuildDatabase) {
     /** One-shot snapshots for use outside a composition (widget, NFC quick-scan). */
     suspend fun observeTagsOnce(): List<NfcTag> = db.nfcTagDao().observeAll().first()
 
-    suspend fun directiveById(id: Long): Directive? =
-        db.directiveDao().observeAll().first().find { it.id == id }
+    suspend fun directiveById(id: Long): Directive? = db.directiveDao().getById(id)
 
     /**
      * Daily directives not yet completed today, in sort order. One-shot rather than
@@ -665,9 +796,9 @@ class AppRepository(private val db: RebuildDatabase) {
      * widget/quick-scan callers want everything actually due, not one zone.
      */
     suspend fun openDailyDirectivesToday(): List<Directive> {
-        val doneIds = db.completionDao().observeForDate(todayKey()).first().map { it.directiveId }.toSet()
+        val doneIds = db.completionDao().getForDate(todayKey()).map { it.directiveId }.toSet()
         val now = Calendar.getInstance()
-        return db.directiveDao().observeAll().first()
+        return db.directiveDao().getAll()
             .filter { isDueToday(it, now) && !it.locked && it.id !in doneIds }
             .sortedBy { it.sortOrder }
     }
@@ -683,4 +814,9 @@ class AppRepository(private val db: RebuildDatabase) {
     /** Restores a full zip backup, unpacking media and rewriting stored paths. */
     suspend fun restoreArchive(context: android.content.Context, source: android.net.Uri) =
         BackupArchive.restoreFrom(context, db, source)
+
+    companion object {
+        const val HARD_BOOST_DAYS = 7
+        const val MAX_SYNC = 400
+    }
 }

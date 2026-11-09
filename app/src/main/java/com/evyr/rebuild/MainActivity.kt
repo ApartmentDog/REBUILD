@@ -20,7 +20,7 @@ import com.evyr.rebuild.ui.MainViewModel
 import com.evyr.rebuild.ui.screens.*
 import com.evyr.rebuild.ui.theme.RebuildTheme
 
-private enum class Screen { LOCK, PERMISSIONS, DAILY_QUOTE, DASHBOARD, NOTEBOOK, SETTINGS, NFC_TAGS, LOCATIONS, GUIDED_SESSIONS, HIDDEN_MEDIA, TAROT_PULL, TAROT_LOG, BOOK_LIBRARY, BOOK_READER, CONFESSION_BOOTH }
+private enum class Screen { LOCK, PERMISSIONS, DAILY_QUOTE, DASHBOARD, NOTEBOOK, SETTINGS, NFC_TAGS, LOCATIONS, GUIDED_SESSIONS, HIDDEN_MEDIA, TAROT_PULL, TAROT_LOG, BOOK_LIBRARY, BOOK_READER, CONFESSION_BOOTH, HOARD }
 private enum class NfcStatus { OK, DISABLED, NO_HARDWARE }
 
 // FragmentActivity rather than ComponentActivity: BiometricPrompt requires a
@@ -74,7 +74,13 @@ class MainActivity : FragmentActivity() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             com.evyr.rebuild.location.GeofenceSync.syncIfNeeded(applicationContext, "on app open")
         }
-        viewModel = MainViewModel(repo)
+        // Through ViewModelProvider so it survives rotation/config changes and
+        // its coroutines are cancelled when the activity really finishes. Built
+        // directly, every recreation leaked a VM with live collectors.
+        viewModel = androidx.lifecycle.ViewModelProvider(
+            this, com.evyr.rebuild.ui.MainViewModelFactory(repo)
+        )[MainViewModel::class.java]
+        val vault = com.evyr.rebuild.data.HardModeVault(applicationContext)
 
         // Clears reminders orphaned by a deleted directive and re-arms the rest.
         // Orphans otherwise fire daily with no directive to name them. Running
@@ -101,13 +107,18 @@ class MainActivity : FragmentActivity() {
                 // confirm-scan (handleTagScan no-ops silently if the tag isn't registered
                 // yet — see AppRepository.handleTagScan). Jump to the registration screen
                 // automatically only if the scan doesn't match a known tag.
-                LaunchedEffect(pendingScanUid) {
+                // Keyed on screen too, so a tap that lands on the lock screen is
+                // picked up once you're past it.
+                LaunchedEffect(pendingScanUid, screen) {
                     val uid = pendingScanUid ?: return@LaunchedEffect
                     if (screen != Screen.NFC_TAGS) {
-                        val tags = viewModel.tags.value
-                        val known = tags.any { it.tagUid == uid }
-                        if (known) {
-                            if (tags.first { it.tagUid == uid }.opensChecklist) {
+                        // Straight from the database: viewModel.tags.value starts as
+                        // an empty list and stays that way until something collects
+                        // it, so a tap that cold-started the app always looked like
+                        // an unknown tag.
+                        val tag = repo.findTag(uid)
+                        if (tag != null) {
+                            if (tag.opensChecklist) {
                                 startActivity(
                                     android.content.Intent(
                                         this@MainActivity,
@@ -119,7 +130,9 @@ class MainActivity : FragmentActivity() {
                                 viewModel.handleTagScan(uid, locationLabel = null)
                             }
                             pendingScanUid = null
-                        } else {
+                        } else if (screen != Screen.LOCK && screen != Screen.PERMISSIONS) {
+                            // Unknown tag opens registration -- but never from the
+                            // lock screen. This used to jump straight past the PIN.
                             screen = Screen.NFC_TAGS
                             // pendingScanUid stays set — NfcRegistrationScreen consumes it
                         }
@@ -240,6 +253,10 @@ class MainActivity : FragmentActivity() {
                         viewModel = viewModel,
                         onBack = { screen = Screen.DASHBOARD }
                     )
+                    Screen.HOARD -> HoardScreen(
+                        viewModel = viewModel,
+                        onBack = { screen = Screen.DASHBOARD }
+                    )
                 }
 
                 if (showCheatCodeDialog) {
@@ -321,6 +338,15 @@ class MainActivity : FragmentActivity() {
                                     showCheatCodeDialog = false
                                     cheatCodeError = null
                                     screen = Screen.CONFESSION_BOOTH
+                                } else if (entered.equals(com.evyr.rebuild.data.HardModeVault.CODE, ignoreCase = true)) {
+                                    val cleared = viewModel.hardItems.value.count { it.hardClearedEpochMs != null }
+                                    if (vault.isUnlocked(cleared)) {
+                                        showCheatCodeDialog = false
+                                        cheatCodeError = null
+                                        screen = Screen.HOARD
+                                    } else {
+                                        cheatCodeError = "SEALED · ${cleared.coerceAtMost(com.evyr.rebuild.data.HardModeVault.REQUIRED)} / ${com.evyr.rebuild.data.HardModeVault.REQUIRED} 🔥"
+                                    }
                                 } else {
                                     cheatCodeError = "wrong"
                                 }

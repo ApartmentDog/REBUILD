@@ -2,6 +2,7 @@ package com.evyr.rebuild.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.evyr.rebuild.data.Directive
+import com.evyr.rebuild.data.GeofencePlace
 import com.evyr.rebuild.data.ItemKind
 import com.evyr.rebuild.data.RecurrenceType
 import com.evyr.rebuild.data.Reminder
@@ -34,7 +36,13 @@ import kotlinx.coroutines.launch
  * com.evyr.rebuild.ui.screens, so no cross-file import is needed for that call.
  */
 @Composable
-fun DirectiveEditRow(directive: Directive, onEdit: () -> Unit, onReminders: () -> Unit, onDelete: () -> Unit) {
+fun DirectiveEditRow(
+    directive: Directive,
+    onEdit: () -> Unit,
+    onReminders: () -> Unit,
+    onDelete: () -> Unit,
+    placeLabel: String? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -44,9 +52,18 @@ fun DirectiveEditRow(directive: Directive, onEdit: () -> Unit, onReminders: () -
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f).clickable(onClick = onEdit)) {
-            Text(directive.title, fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 13.sp)
             Text(
-                "${directive.zone.name} · ${directive.kind.name}",
+                (if (directive.zone == Zone.HARD) "🔥 " else "") + directive.title,
+                fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 13.sp
+            )
+            Text(
+                buildString {
+                    append(directive.zone.name)
+                    if (directive.zone == Zone.HARD) {
+                        append(if (directive.hardClearedEpochMs != null) " · CLEARED" else " · +${directive.hardBoost}%")
+                    } else append(" · ${directive.kind.name}")
+                    placeLabel?.let { append(" · 📍 $it") }
+                },
                 fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
             )
         }
@@ -107,6 +124,7 @@ fun AddMindsetLineDialog(
 fun DirectiveEditDialog(
     existing: Directive?,
     defaultZone: Zone = Zone.DAILY,
+    places: List<GeofencePlace> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (Directive) -> Unit
 ) {
@@ -125,18 +143,35 @@ fun DirectiveEditDialog(
     var dayOfMonthText by remember { mutableStateOf((existing?.recurrenceDayOfMonth ?: 1).toString()) }
     var isVolumeTracker by remember { mutableStateOf(existing?.targetOz != null) }
     var targetOzText by remember { mutableStateOf((existing?.targetOz ?: 125).toString()) }
+    var weekday by remember { mutableStateOf(existing?.weekday) }
+    var placeId by remember { mutableStateOf(existing?.placeId) }
+    var hardBoost by remember { mutableStateOf(existing?.hardBoost?.takeIf { it > 0 } ?: 10) }
+    val checkable = zone == Zone.DAILY || zone == Zone.WEEKLY
+    // Location only makes sense for things you do somewhere: checkable items
+    // and 🔥 objectives. Streaks and mindset lines aren't tied to a place.
+    val placeable = checkable || zone == Zone.HARD
+    // A Weekly item on DEFAULT recurrence needs a day, and there was no way to
+    // set one here -- it saved with weekday = null and was never due.
+    val missingWeekday = zone == Zone.WEEKLY && recurrenceType == RecurrenceType.NONE && weekday == null
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = NervPanel,
         title = {
             Text(
-                if (existing == null) "ADD DIRECTIVE" else "EDIT DIRECTIVE",
+                when {
+                    zone == Zone.HARD -> if (existing == null) "🔥 ADD HARD OBJECTIVE" else "🔥 EDIT HARD OBJECTIVE"
+                    existing == null -> "ADD DIRECTIVE"
+                    else -> "EDIT DIRECTIVE"
+                },
                 fontFamily = TerminalFontFamily, color = NervOrange
             )
         },
         text = {
-            Column {
+            // Scrolls: with recurrence, NFC, volume and location all open the
+            // form runs well past a phone screen, and AlertDialog doesn't
+            // scroll its text slot by itself -- the SAVE button got pushed off.
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -145,20 +180,90 @@ fun DirectiveEditDialog(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text("ZONE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
-                Row {
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     Zone.values().forEach { z ->
                         FilterChip(
                             selected = zone == z,
                             onClick = { zone = z; kind = if (z == Zone.STANDING) ItemKind.STREAK else if (z == Zone.MINDSET) ItemKind.DISPLAY_ONLY else ItemKind.CHECKBOX },
-                            label = { Text(z.name.take(3), fontFamily = TerminalFontFamily, fontSize = 10.sp) },
+                            label = {
+                                Text(
+                                    if (z == Zone.HARD) "🔥" else z.name.take(3),
+                                    fontFamily = TerminalFontFamily, fontSize = 10.sp
+                                )
+                            },
                             modifier = Modifier.padding(end = 4.dp)
+                        )
+                    }
+                }
+
+                if (zone == Zone.HARD) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "One-time. Clear it once and it's done for good -- no reset, no recurrence.",
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("SYNC BOOST", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(5, 10, 20, 30).forEach { b ->
+                            val selected = hardBoost == b
+                            Text(
+                                "+$b%",
+                                fontFamily = TerminalFontFamily,
+                                color = if (selected) NervBackground else NervGreen,
+                                fontSize = 10.sp,
+                                modifier = Modifier
+                                    .background(if (selected) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
+                                    .clickable { hardBoost = b }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        "Added on top of your Sync Ratio when cleared -- can push it past 100. Fades out over a week.",
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                    )
+                }
+
+                if (placeable) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("LOCATION", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Spacer(Modifier.height(4.dp))
+                    if (places.isEmpty()) {
+                        Text(
+                            "No places saved yet -- add one under Settings > Locations to tie objectives to it.",
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                        )
+                    } else {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            (listOf<GeofencePlace?>(null) + places).forEach { p ->
+                                val selected = placeId == p?.id
+                                Text(
+                                    p?.label?.uppercase()?.let { "📍 $it" } ?: "ANYWHERE",
+                                    fontFamily = TerminalFontFamily,
+                                    color = if (selected) NervBackground else NervGreen,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier
+                                        .background(if (selected) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
+                                        .clickable { placeId = p?.id }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            "Shows with its place, jumps to the top while you're there, and is on that place's arrival nudge.",
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
                         )
                     }
                 }
 
                 // Only meaningful for zones that can be checked off. Streak and
                 // display-only items have no checkbox to disable.
-                if (zone == Zone.DAILY || zone == Zone.WEEKLY) {
+                if (checkable) {
                     Spacer(Modifier.height(12.dp))
                     Text("RECURRENCE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
@@ -186,8 +291,7 @@ fun DirectiveEditDialog(
                         RecurrenceType.SPECIFIC_DAYS -> {
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                val dayLabels = listOf(1 to "SUN", 2 to "MON", 3 to "TUE", 4 to "WED", 5 to "THU", 6 to "FRI", 7 to "SAT")
-                                dayLabels.forEach { (dayNum, label) ->
+                                WEEKDAY_CHIPS.forEach { (dayNum, label) ->
                                     val on = dayNum in selectedDays
                                     Text(
                                         label,
@@ -232,10 +336,35 @@ fun DirectiveEditDialog(
                         }
                         RecurrenceType.NONE -> {
                             Spacer(Modifier.height(4.dp))
-                            Text(
-                                if (zone == Zone.DAILY) "Every day (default for Daily)." else "Uses this directive's single Weekly day.",
-                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
-                            )
+                            if (zone == Zone.DAILY) {
+                                Text(
+                                    "Every day (default for Daily).",
+                                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                                )
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    WEEKDAY_CHIPS.forEach { (dayNum, label) ->
+                                        val on = weekday == dayNum
+                                        Text(
+                                            label,
+                                            fontFamily = TerminalFontFamily,
+                                            color = if (on) NervBackground else NervGreen,
+                                            fontSize = 9.sp,
+                                            modifier = Modifier
+                                                .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(4.dp))
+                                                .clickable { weekday = dayNum }
+                                                .padding(horizontal = 6.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    if (weekday == null) "Pick the day it's due -- without one it never comes up."
+                                    else "Due once a week on this day.",
+                                    fontFamily = TerminalFontFamily,
+                                    color = if (weekday == null) NervRed else NervDim,
+                                    fontSize = 9.sp
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(12.dp))
@@ -298,8 +427,10 @@ fun DirectiveEditDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (title.isNotBlank()) {
+            TextButton(
+                enabled = title.isNotBlank() && !missingWeekday,
+                onClick = {
+                if (title.isNotBlank() && !missingWeekday) {
                     onSave(
                         (existing ?: Directive(title = title, zone = zone, kind = kind))
                             .copy(
@@ -333,7 +464,12 @@ fun DirectiveEditDialog(
                                 recurrenceIntervalDays = if (recurrenceType == RecurrenceType.INTERVAL)
                                     intervalDaysText.toIntOrNull()?.coerceAtLeast(1) else null,
                                 recurrenceDayOfMonth = if (recurrenceType == RecurrenceType.MONTHLY)
-                                    dayOfMonthText.toIntOrNull()?.coerceIn(1, 31) else null
+                                    dayOfMonthText.toIntOrNull()?.coerceIn(1, 31) else null,
+                                weekday = if (zone == Zone.WEEKLY) weekday else null,
+                                placeId = if (placeable) placeId else null,
+                                hardBoost = if (zone == Zone.HARD) hardBoost else 0,
+                                // Moving an objective out of HARD drops its cleared state.
+                                hardClearedEpochMs = if (zone == Zone.HARD) existing?.hardClearedEpochMs else null
                             )
                     )
                 }
@@ -835,3 +971,5 @@ private fun ReminderTimeStepper(label: String, value: Int, min: Int, max: Int, o
         }
     }
 }
+
+private val WEEKDAY_CHIPS = listOf(1 to "SUN", 2 to "MON", 3 to "TUE", 4 to "WED", 5 to "THU", 6 to "FRI", 7 to "SAT")

@@ -31,6 +31,8 @@ import com.evyr.rebuild.ui.theme.TerminalFontFamily
 import kotlin.math.cos
 import kotlin.math.sin
 
+private val BerserkOrange = Color(0xFFFF6A00)
+
 private val WaveColors = listOf(
     Color(0xFFFF3B5C), // red
     Color(0xFFFF9F1C), // orange
@@ -56,12 +58,16 @@ fun SyncRatioBar(
         label = "syncRatioAnim"
     )
 
+    // Past 100 only happens via 🔥 hard objective boosts.
+    val berserk = percent > 100
     val statusColor = when {
+        berserk -> BerserkOrange
         percent >= 60 -> EvaGreen
         percent >= 30 -> EvaYellow
         else -> EvaRed
     }
     val statusText = when {
+        berserk -> "BERSERK"
         percent >= 60 -> "NOMINAL"
         percent >= 30 -> "CAUTION"
         else -> "CRITICAL"
@@ -79,7 +85,9 @@ fun SyncRatioBar(
 
     // Higher sync pulls the traces into tighter alignment (near-unison, like a
     // healthy sync graph); lower sync spreads them apart and desyncs their phase.
-    val spread = (100f - animatedPercent) / 100f
+    // Clamped: above 100 the old formula went negative and the traces started
+    // diverging again, the opposite of what a higher number should show.
+    val spread = ((100f - animatedPercent) / 100f).coerceIn(0f, 1f)
 
     androidx.compose.foundation.layout.Box(
         modifier = modifier

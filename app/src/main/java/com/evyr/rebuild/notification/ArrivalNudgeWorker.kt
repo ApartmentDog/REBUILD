@@ -43,6 +43,20 @@ class ArrivalNudgeWorker(
             com.evyr.rebuild.location.GeofenceDebugLog.log(applicationContext, "skipped: place $placeId not found in database")
             return Result.success()
         }
+        // Location objectives for this place: separate from the put-away
+        // checklist (and its per-place arrival toggle), since tying an
+        // objective to a place is itself the request to be told on arrival.
+        val objectives = repo.pendingObjectivesForPlace(placeId)
+        if (objectives.isNotEmpty()) {
+            NotificationHelper(applicationContext).showPlaceObjectives(
+                placeId, place.label,
+                objectives.map { (if (it.zone == com.evyr.rebuild.data.Zone.HARD) "🔥 " else "") + it.title }
+            )
+            com.evyr.rebuild.location.GeofenceDebugLog.log(
+                applicationContext, "${place.label}: ${objectives.size} location objective(s) shown"
+            )
+        }
+
         if (!place.notifyOnArrival) {
             com.evyr.rebuild.location.GeofenceDebugLog.log(applicationContext, "skipped: arrival nudge disabled for ${place.label}")
             return Result.success()

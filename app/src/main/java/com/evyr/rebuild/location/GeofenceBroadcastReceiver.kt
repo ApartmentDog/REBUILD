@@ -100,6 +100,10 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             return
         }
 
+        // Place reminders are collected and fired after the loop under a single
+        // goAsync() -- it can only be called once per onReceive.
+        val toFire = mutableListOf<Pair<Long, com.evyr.rebuild.data.ReminderTrigger>>()
+
         triggering.forEach { geofence ->
             val placeId = geofence.requestId.removePrefix("place_").toLongOrNull()
             if (placeId == null) {
@@ -182,7 +186,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     // Leaving checklist mode; closes any put-away window.
                     com.evyr.rebuild.nfc.DoorState.onGeofenceExit(context, placeId)
                     GeofencePresence.setInside(context, placeId, false)
-                    firePlaceReminders(context, placeId, com.evyr.rebuild.data.ReminderTrigger.DEPARTURE)
+                    toFire += placeId to com.evyr.rebuild.data.ReminderTrigger.DEPARTURE
                     GeofenceDebugLog.log(context, "place $placeId EXIT — enqueuing DepartureCheckWorker")
                     val request = OneTimeWorkRequestBuilder<DepartureCheckWorker>()
                         .setInputData(
@@ -198,7 +202,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         context, placeId, GeofencePresence.lastDepartureAt(context, placeId)
                     )
                     GeofencePresence.setInside(context, placeId, true)
-                    firePlaceReminders(context, placeId, com.evyr.rebuild.data.ReminderTrigger.ARRIVAL)
+                    toFire += placeId to com.evyr.rebuild.data.ReminderTrigger.ARRIVAL
                     GeofenceDebugLog.log(context, "place $placeId ENTER — enqueuing ArrivalNudgeWorker (+${ARRIVAL_CHECK_DELAY_MINUTES}min)")
                     val request = OneTimeWorkRequestBuilder<ArrivalNudgeWorker>()
                         .setInitialDelay(ARRIVAL_CHECK_DELAY_MINUTES, TimeUnit.MINUTES)
@@ -213,6 +217,21 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 }
             }
         }
+
+        if (toFire.isNotEmpty()) {
+            val appContext = context.applicationContext
+            // goAsync keeps the process alive until the work finishes. A bare
+            // coroutine launched from onReceive can be killed the moment
+            // onReceive returns, which silently dropped place reminders.
+            val pending = goAsync()
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    toFire.forEach { (placeId, trigger) -> firePlaceReminders(appContext, placeId, trigger) }
+                } finally {
+                    pending.finish()
+                }
+            }
+        }
     }
 
     /**
@@ -220,13 +239,13 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
      * place, honouring its day-of-week filter. These never touch AlarmManager
      * -- the geofence transition is the whole trigger.
      */
-    private fun firePlaceReminders(
+    private suspend fun firePlaceReminders(
         context: Context,
         placeId: Long,
         trigger: com.evyr.rebuild.data.ReminderTrigger
     ) {
         val appContext = context.applicationContext
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        run {
             val repo = com.evyr.rebuild.data.AppRepository(
                 com.evyr.rebuild.data.RebuildDatabase.getInstance(appContext)
             )
@@ -237,7 +256,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             val prefs = repo.getNotificationPrefs()
             if (com.evyr.rebuild.notification.isWithinQuietHours(prefs.quietHoursStart, prefs.quietHoursEnd)) {
                 GeofenceDebugLog.log(appContext, "place reminder suppressed — within quiet hours")
-                return@launch
+                return
             }
 
             repo.remindersForPlace(placeId, trigger)

@@ -3,10 +3,44 @@ package com.evyr.rebuild.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.evyr.rebuild.data.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(private val repo: AppRepository) : ViewModel() {
+
+    val allDirectives: StateFlow<List<Directive>> = repo.observeAllDirectives()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** 🔥 one-time objectives, uncleared first, then cleared newest first. */
+    val hardItems: StateFlow<List<Directive>> = repo.observeDirectivesByZone(Zone.HARD)
+        .map { list ->
+            list.sortedWith(
+                compareBy<Directive> { it.hardClearedEpochMs != null }
+                    .thenByDescending { it.hardClearedEpochMs ?: 0L }
+                    .thenBy { it.sortOrder }
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Every completion ever logged -- the coin count in the hoard. */
+    val lifetimeCompletions: StateFlow<Int> = repo.observeCompletionCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    fun clearHardObjective(id: Long) {
+        viewModelScope.launch { repo.clearHardObjective(id) }
+    }
+
+    fun unclearHardObjective(id: Long) {
+        viewModelScope.launch { repo.unclearHardObjective(id) }
+    }
+
+    fun isClearedToday(d: Directive): Boolean = repo.isClearedToday(d)
+
+    fun hardBoostNow(d: Directive): Float = repo.hardBoostNow(d)
+
+    fun todayKey(): String = repo.todayKey()
 
     val dailyItems: StateFlow<List<Directive>> = repo.observeDirectivesByZone(Zone.DAILY)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -58,11 +92,13 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
             repo.seedIfEmpty()
             refreshSyncRatio()
         }
-        // Recompute whenever completions or streaks change
+        // Recompute whenever completions, streaks, or the directives themselves
+        // change. Directives were missing: adding, editing, deleting or
+        // unlocking one changes what's due (and 🔥 boosts), but the number
+        // didn't move until something was ticked.
         viewModelScope.launch {
-            combine(todayCompletions, streaks) { _, _ -> Unit }.collect {
-                refreshSyncRatio()
-            }
+            combine(repo.observeCompletionsForToday(), repo.observeStreaks(), repo.observeAllDirectives()) { _, _, _ -> Unit }
+                .collect { refreshSyncRatio() }
         }
     }
 
@@ -93,8 +129,16 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.addOrUpdateDirective(directive) }
     }
 
-    fun deleteDirective(directive: Directive) {
-        viewModelScope.launch { repo.deleteDirective(directive) }
+    /** Deletes, then cancels the alarms its reminders had armed -- removing
+     *  the rows alone left them in AlarmManager until the next app open. */
+    fun deleteDirective(directive: Directive, context: android.content.Context? = null) {
+        val appContext = context?.applicationContext
+        viewModelScope.launch {
+            val removed = repo.deleteDirective(directive)
+            if (appContext != null) {
+                removed.forEach { com.evyr.rebuild.notification.ReminderScheduler.cancel(appContext, it) }
+            }
+        }
     }
 
     fun unlockDirective(id: Long) {
@@ -199,12 +243,11 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
     val recentSessionLogs: StateFlow<List<SessionLog>> = repo.observeRecentSessionLogs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _fryScreamLocked = MutableStateFlow(true)
-    val fryScreamLocked: StateFlow<Boolean> = _fryScreamLocked
-
-    init {
-        viewModelScope.launch { _fryScreamLocked.value = repo.isFryScreamLocked() }
-    }
+    // Derived from the live directive list: was read once at startup, so
+    // unlocking Fry Scream didn't register until the app restarted.
+    val fryScreamLocked: StateFlow<Boolean> = repo.observeAllDirectives()
+        .map { list -> list.find { it.title == "Fry Scream Basics" }?.locked ?: true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     fun logSession(type: SessionType, startedAtEpochMs: Long, stepsCompleted: Int, stepsTotal: Int, notes: String? = null) {
         viewModelScope.launch { repo.logSession(type, startedAtEpochMs, stepsCompleted, stepsTotal, notes) }
@@ -332,6 +375,14 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
 
     suspend fun restoreArchive(context: android.content.Context, source: android.net.Uri) =
         repo.restoreArchive(context, source)
+
+    /** After a restore: re-arm every reminder alarm and re-register geofences.
+     *  Restore only writes rows, so restored reminders never fired before. */
+    suspend fun rearmAfterRestore(context: android.content.Context) {
+        val app = context.applicationContext
+        com.evyr.rebuild.notification.ReminderScheduler.rescheduleAll(app, repo)
+        com.evyr.rebuild.location.GeofenceSync.reregister(app, "after restore")
+    }
 }
 
 class MainViewModelFactory(private val repo: AppRepository) : androidx.lifecycle.ViewModelProvider.Factory {
