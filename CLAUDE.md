@@ -32,7 +32,7 @@ Package root: `app/src/main/java/com/evyr/rebuild/` (paths below are relative to
 - **🔥 Hard objectives**: `clearHardObjective` / `unclearHardObjective` (same-day undo only). `data/HardModeVault` latches the unlock of a sealed cheat code at 5 cleared (SharedPreferences `rebuild_vault`, `REQUIRED`, `CODE`). The code opens `ui/screens/HoardScreen.kt`. The owner asked not to be told what that screen is: don't describe it to him.
 
 ## Database
-- `data/RebuildDatabase.kt`: entity list, `version`, every `MIGRATION_x_y`, `getInstance`. **Current schema: 23.**
+- `data/RebuildDatabase.kt`: entity list, `version`, every `MIGRATION_x_y`, `getInstance`. **Current schema: 24.** Never reuse a version number the phone may already have: v23 = tarot spreads, v24 = place/🔥/HOLD columns.
 - Adding/changing a column: (1) field with a default in `Models.kt`, (2) bump `version`, (3) write an additive `MIGRATION_n_n+1` and add it to `.addMigrations(...)`, (4) if it's a new table, add a DAO in `Daos.kt` and an abstract getter, and add it to `BackupEnvelope`, `buildEnvelope`, `applyEnvelope` and `countRows` in `data/BackupManager.kt` (defaulted list so old backups still load). Room rejects columns the entity doesn't declare, so a dropped column needs a table rebuild (see `MIGRATION_15_16`).
 - No foreign keys anywhere: deletes clean up by hand (`AppRepository.deleteDirective`, `deleteGeofencePlace`).
 - Tables: directives, completions, streaks, streak_breaks, nfc_tags, notebook_entries, session_steps, session_logs, media_attachments, notification_prefs (singleton id 1), geofence_places, geofence_place_directives, sync_history, daily_scan_progress, daily_volume_progress, hidden_media, reminders, tarot_pulls, books, confession_entries.
@@ -61,7 +61,7 @@ Flow: `LOCK` (`PinLockScreen`) → `PERMISSIONS` (`PermissionFlowScreen`) → `D
 | Guided sessions | `ui/screens/GuidedSessionScreen.kt` | posture/voice/fry scream runner; `GuidedSessionContent` is reused in the Dashboard tab |
 
 Cheat codes (case-insensitive, in `MainActivity`'s dialog):
-`FREEPLAY` → `HiddenMediaPlayerScreen` · `SECFOLDER` → launches Samsung Secure Folder · `SWORD` → `TarotPullScreen` (deck in `tarot/TarotDeck.kt`) · `MIRROR` → `TarotLogScreen` · `ALEXANDRIA` → `BookLibraryScreen` / `BookReaderScreen` (`pdf/PdfHelper`, `epub/EpubParser`) · `APPLE` → `ConfessionBoothScreen` (password: `security/ConfessionPasswordManager`) · `HardModeVault.CODE` → `HoardScreen` (sealed until 5 🔥).
+`FREEPLAY` → `HiddenMediaPlayerScreen` · `SECFOLDER` → launches Samsung Secure Folder · `SWORD` → `TarotPullScreen` (question field + spreads; deck and spreads in `tarot/TarotDeck.kt`) · `MIRROR` → `TarotLogScreen` · `ALEXANDRIA` → `BookLibraryScreen` / `BookReaderScreen` (`pdf/PdfHelper`, `epub/EpubParser`) · `APPLE` → `ConfessionBoothScreen` (password: `security/ConfessionPasswordManager`) · `HardModeVault.CODE` → `HoardScreen` (sealed until 5 🔥).
 **Adding a code**: add a `Screen` value, an `else if` branch in the dialog's ENTER handler, and a `when (screen)` case.
 
 ## Theme & components (`ui/theme`, `ui/components`)
