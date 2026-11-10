@@ -10,6 +10,7 @@ Package root: `app/src/main/java/com/evyr/rebuild/` (paths below are relative to
 ## Build & ship
 - Kotlin + Jetpack Compose + Room, single module `app`. compileSdk 36, minSdk 26, targetSdk 34.
 - Built only by GitHub Actions (`.github/workflows/build-apk.yml`, Gradle pinned to 8.13 there and must match the wrapper). Push to `main` → APK on the `latest` release as `rebuild-latest.apk`. No local Android SDK is assumed.
+- Pushes made from a Claude session do NOT trigger the workflow. After pushing, start it by hand: `gh api -X POST repos/ApartmentDog/REBUILD/actions/workflows/build-apk.yml/dispatches -f ref=main` with the owner's token in `GH_TOKEN`, then watch `actions/runs`. The session's own credentials can't reach Actions.
 - Signing: committed `keystore/debug.keystore`, wired in `app/build.gradle.kts`. Never replace it (updates would stop installing).
 - `VersionFooter` shows `BuildConfig.VERSION_NAME`, `GIT_COMMIT_HASH`, `BUILD_TIMESTAMP` (set in `app/build.gradle.kts`).
 - Owner's rules: push straight to `main` without asking; targeted diffs, not rewrites; nothing is "done" until a CI build passes.
