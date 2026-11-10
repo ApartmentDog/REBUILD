@@ -1,3 +1,4 @@
+# Builds the debug APK and publishes it to the "latest" release.
 name: Build Debug APK
 
 on:
