@@ -31,6 +31,7 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val repo = AppRepository(RebuildDatabase.getInstance(context))
                 ReminderScheduler.rescheduleAll(context, repo)
+                DigestScheduler.scheduleAll(context, repo.getNotificationPrefs())
                 GeofenceSync.reregister(context, reason)
             } finally {
                 pending.finish()

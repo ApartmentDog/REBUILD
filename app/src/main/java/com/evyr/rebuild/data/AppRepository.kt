@@ -546,6 +546,72 @@ class AppRepository(private val db: RebuildDatabase) {
         db.completionDao().getForDate(todayKey())
             .find { it.directiveId == directiveId }?.completedAtEpochMs
 
+    /** Whether there's nothing left to remind about today: ticked, held, or
+     *  (for a 🔥 objective) cleared. A reminder for it would just be noise. */
+    suspend fun isSatisfiedToday(d: Directive): Boolean = when (d.zone) {
+        Zone.HARD -> d.hardClearedEpochMs != null
+        Zone.STANDING -> db.streakDao().get(d.id)?.lastHeldDate == todayKey()
+        Zone.MINDSET -> false
+        else -> completedAtToday(d.id) != null
+    }
+
+    /** What the DONE button on a reminder does, per kind of directive. Multi-tap
+     *  ones advance by one, the same as a tap in the app or on the widget. */
+    suspend fun completeFromNotification(directiveId: Long) {
+        val d = db.directiveDao().getById(directiveId) ?: return
+        when (d.zone) {
+            Zone.HARD -> clearHardObjective(d.id)
+            Zone.STANDING -> confirmStreakHeldToday(d.id)
+            Zone.MINDSET -> {}
+            else -> incrementScanProgress(d.id, source = "reminder")
+        }
+    }
+
+    // ---------- Most missed ----------
+
+    data class MissStat(val directive: Directive, val missed: Int, val due: Int)
+
+    /**
+     * The directives missed most over the last [lookbackDays] (not counting
+     * today, which isn't over). Derived from the completions table, so it
+     * covers history from before this existed. Bounded at each directive's
+     * first completion, same as mostMissedWeekdayFor: days before it was ever
+     * done aren't failures. Needs 2+ misses to be listed.
+     */
+    suspend fun mostMissed(lookbackDays: Int = 30, limit: Int = 3): List<MissStat> {
+        val datesByDirective = db.completionDao().getAll().groupBy({ it.directiveId }, { it.date })
+        val today = Calendar.getInstance()
+        return db.directiveDao().getAll()
+            .filter { (it.zone == Zone.DAILY || it.zone == Zone.WEEKLY) && !it.locked }
+            .mapNotNull { d ->
+                val dates = datesByDirective[d.id]?.toSortedSet() ?: return@mapNotNull null
+                val earliest = dates.first()
+                var missed = 0
+                var due = 0
+                for (i in 1..lookbackDays) {
+                    val day = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -i) }
+                    val key = dateKey(day.time)
+                    if (key < earliest) break
+                    if (key in dates) { due++; continue }
+                    if (wasDueOn(d, day, key, dates)) { due++; missed++ }
+                }
+                if (missed < 2) null else MissStat(d, missed, due)
+            }
+            .sortedWith(compareByDescending<MissStat> { it.missed }.thenBy { it.directive.sortOrder })
+            .take(limit)
+    }
+
+    /** isDueToday for a past day. Every-N-days can't use lastCompletedEpochMs
+     *  (that's "now"), so it's worked out from the completion before that day,
+     *  and counts once per cycle -- the day it came due -- not every overdue day. */
+    private fun wasDueOn(d: Directive, day: Calendar, key: String, dates: java.util.SortedSet<String>): Boolean {
+        if (d.recurrenceType != RecurrenceType.INTERVAL) return isDueToday(d, day)
+        val interval = d.recurrenceIntervalDays?.coerceAtLeast(1) ?: 1
+        val prev = dates.headSet(key).lastOrNull() ?: return false
+        val prevMs = dateFmt.get()!!.parse(prev)?.time ?: return false
+        return calendarDaysBetween(prevMs, day) == interval
+    }
+
     /** Reminders that fire on entering or leaving a given place. */
     suspend fun remindersForPlace(placeId: Long, trigger: ReminderTrigger): List<Reminder> =
         db.reminderDao().getForPlace(placeId, trigger)

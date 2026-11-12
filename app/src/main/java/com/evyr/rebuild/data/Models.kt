@@ -285,7 +285,15 @@ data class Reminder(
     // The geofence place this reminder cares about. Required for ARRIVAL and
     // DEPARTURE; for TIME it's only read when placeCondition isn't ANYWHERE.
     val placeId: Long? = null,
-    val placeCondition: PlaceCondition = PlaceCondition.ANYWHERE
+    val placeCondition: PlaceCondition = PlaceCondition.ANYWHERE,
+    // This reminder's own tone, as a content URI string from the system
+    // ringtone picker. Null = the default alarm tone.
+    val soundUri: String? = null,
+    val vibrate: Boolean = true,
+    // Re-nag: if the directive still isn't done, fire again every
+    // renagMinutes, up to renagMax extra times. 0 = fire once and stop.
+    val renagMinutes: Int = 0,
+    val renagMax: Int = 3
 )
 
 /**
@@ -318,7 +326,12 @@ data class NotificationPrefs(
     // feature shipped off, so the guard never ran and a phantom transition could
     // notify at any hour. Still toggleable in Settings.
     val quietHoursStart: Int? = 22,  // 0-23, null = no quiet hours
-    val quietHoursEnd: Int? = 7
+    val quietHoursEnd: Int? = 7,
+    // Daily digests (see notification/DigestScheduler). The morning one lists
+    // what's due; the evening one only fires if something is still open.
+    val morningSummaryHour: Int = 6,
+    val eveningNudgeEnabled: Boolean = true,
+    val eveningNudgeHour: Int = 20
 )
 
 /**

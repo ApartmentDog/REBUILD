@@ -88,6 +88,7 @@ class MainActivity : FragmentActivity() {
         // opens rather than whenever the device happens to restart.
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             com.evyr.rebuild.notification.ReminderScheduler.rescheduleAll(applicationContext, repo)
+            com.evyr.rebuild.notification.DigestScheduler.scheduleAll(applicationContext, repo.getNotificationPrefs())
         }
 
         nfcHelper = NfcHelper()

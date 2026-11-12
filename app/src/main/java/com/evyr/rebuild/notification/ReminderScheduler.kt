@@ -35,6 +35,52 @@ object ReminderScheduler {
         )
     }
 
+    /**
+     * PendingIntent for a non-daily event on a reminder: a follow-up firing
+     * (snooze or re-nag) or a notification button. Told apart from the daily
+     * alarm, and from each other, by the intent action -- PendingIntents with
+     * different actions are different even with the same request code.
+     */
+    fun actionIntent(context: Context, reminderId: Long, action: String, nagCount: Int = 0): PendingIntent {
+        val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+            this.action = action
+            putExtra(ReminderAlarmReceiver.EXTRA_REMINDER_ID, reminderId)
+            putExtra(ReminderAlarmReceiver.EXTRA_NAG_COUNT, nagCount)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            reminderId.toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /** One-off firing [minutes] from now: a snooze, or the next re-nag. Only
+     *  one can be pending per reminder; a new one replaces it. */
+    fun scheduleFollowUp(context: Context, reminderId: Long, minutes: Int, nagCount: Int) {
+        val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
+        val triggerAt = System.currentTimeMillis() + minutes.coerceAtLeast(1) * 60_000L
+        val pi = actionIntent(context, reminderId, ReminderAlarmReceiver.ACTION_FOLLOW_UP, nagCount)
+        if (canScheduleExact(context)) {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
+        } else {
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
+        }
+    }
+
+    fun cancelFollowUp(context: Context, reminderId: Long) {
+        val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
+        alarmManager.cancel(actionIntent(context, reminderId, ReminderAlarmReceiver.ACTION_FOLLOW_UP))
+    }
+
+    /** False means Android may delay alarms by minutes (or far longer in
+     *  Doze) -- reminders still fire, just not on time. API 31+ only; before
+     *  that exact alarms needed no permission. */
+    fun canScheduleExact(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        return context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() ?: false
+    }
+
     /** Next occurrence of hour:minute -- today if that time hasn't passed yet, tomorrow otherwise. */
     private fun nextTriggerTime(hour: Int, minute: Int): Long {
         val now = Calendar.getInstance()
@@ -117,6 +163,12 @@ object ReminderScheduler {
     }
 
     fun cancel(context: Context, reminder: Reminder) {
+        // Any pending snooze/re-nag and anything on screen goes too. The
+        // reminder's notification channels are left alone: this runs for a
+        // disable as well as a delete, and they're cleaned up on the next
+        // firing or by deleteChannels.
+        cancelFollowUp(context, reminder.id)
+        NotificationHelper(context).cancelReminderNotification(reminder.id)
         if (reminder.reminderType == ReminderType.CALENDAR) {
             reminder.calendarEventId?.let { CalendarReminderWriter.deleteEvent(context, it) }
             return
@@ -147,6 +199,7 @@ object ReminderScheduler {
     suspend fun rescheduleAll(context: Context, repo: com.evyr.rebuild.data.AppRepository) {
         repo.orphanedReminders().forEach {
             cancel(context, it)
+            NotificationHelper(context).deleteReminderChannels(it.id)
             repo.deleteReminder(it)
         }
         repo.getAllEnabledReminders().forEach { schedule(context, it) }

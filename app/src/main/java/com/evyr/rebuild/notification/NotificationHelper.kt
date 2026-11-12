@@ -170,39 +170,134 @@ class NotificationHelper(private val context: Context) {
         NotificationManagerCompat.from(context).notify(4000 + placeId.toInt(), notification)
     }
 
-    fun showMorningSummary(dueCount: Int) {
+    /** Morning digest: what's due today, by name. */
+    fun showMorningSummary(titles: List<String>) {
         val notification = NotificationCompat.Builder(context, CHANNEL_DAILY_QUOTE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("TODAY'S DIRECTIVES")
-            .setContentText("$dueCount items due today")
+            .setContentTitle("TODAY: ${titles.size} DIRECTIVE${if (titles.size == 1) "" else "S"}")
+            .setContentText(titles.joinToString(", "))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(titles.joinToString("\n")))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)
+            .setContentIntent(openAppIntent())
             .build()
         NotificationManagerCompat.from(context).notify(2001, notification)
     }
 
-    /**
-     * Custom scheduled reminder for a specific directive, fired by
-     * ReminderAlarmReceiver at the time the user set. Uses the reminder's own
-     * custom message if one was set, otherwise falls back to the directive's
-     * title so a reminder with no message still says something meaningful.
-     */
-    fun showReminder(reminderId: Long, directiveTitle: String, customMessage: String?) {
-        val builder = NotificationCompat.Builder(context, CHANNEL_REMINDERS)
+    /** Evening digest: what's still open. Only sent when something is. */
+    fun showEveningNudge(titles: List<String>) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_GEOFENCE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(directiveTitle.uppercase())
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-        // Only set body text when there's a real message. The old fallback was
-        // the literal word "Reminder", which told you nothing the title and the
-        // notification channel didn't already say.
-        customMessage?.takeIf { it.isNotBlank() }?.let { builder.setContentText(it) }
-        val notification = builder
+            .setContentTitle("${titles.size} STILL OPEN TODAY")
+            .setContentText(titles.joinToString(", "))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(titles.joinToString("\n")))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
             .build()
-        // 3000-offset id range keeps these from ever colliding with the fixed
-        // departure/arrival/summary ids above, since reminder ids are user-created
-        // and open-ended rather than a small fixed set.
-        NotificationManagerCompat.from(context).notify(3000 + reminderId.toInt(), notification)
+        NotificationManagerCompat.from(context).notify(2002, notification)
     }
+
+    /**
+     * A directive reminder. Each reminder has its own notification channel,
+     * because Android fixes sound and vibration per CHANNEL, not per
+     * notification -- that's the only way one reminder can have a different
+     * tone from another. The channel id carries a hash of the tone settings:
+     * a channel's sound can't be changed after creation, so changing the tone
+     * means a new channel and deleting the old one.
+     *
+     * ALARM type is insistent: the tone loops until the notification is
+     * dealt with. It previously showed nothing at all -- the alarm fired the
+     * receiver, which skipped the notification on the assumption that
+     * setAlarmClock rings by itself. It doesn't.
+     *
+     * [nagCount] is 0 for the first firing, 1+ for re-nags.
+     */
+    fun showReminder(reminder: com.evyr.rebuild.data.Reminder, directive: com.evyr.rebuild.data.Directive, nagCount: Int = 0) {
+        val isAlarm = reminder.reminderType == com.evyr.rebuild.data.ReminderType.ALARM
+        val channelId = reminderChannelId(reminder)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (manager != null) {
+            deleteReminderChannels(reminder.id, except = channelId)
+            manager.createNotificationChannelGroup(
+                android.app.NotificationChannelGroup(GROUP_REMINDERS, "Directive Reminders")
+            )
+            val sound = reminder.soundUri?.let { runCatching { android.net.Uri.parse(it) }.getOrNull() }
+                ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+            val channel = NotificationChannel(
+                channelId, directive.title, NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                group = GROUP_REMINDERS
+                setSound(
+                    sound,
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(if (isAlarm) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_NOTIFICATION)
+                        .build()
+                )
+                enableVibration(reminder.vibrate)
+                if (reminder.vibrate) vibrationPattern = longArrayOf(0, 400, 200, 400, 200, 600)
+            }
+            manager.createNotificationChannel(channel)
+        }
+
+        val notifId = reminderNotificationId(reminder.id)
+        val body = buildString {
+            reminder.customMessage?.takeIf { it.isNotBlank() }?.let { append(it) }
+            if (nagCount > 0) {
+                if (isNotEmpty()) append(" · ")
+                append("Still open (reminder ${nagCount + 1})")
+            }
+        }
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(directive.title.uppercase())
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(if (isAlarm) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(openAppIntent())
+        if (body.isNotEmpty()) builder.setContentText(body)
+
+        // DONE acts on the directive from the shade, no PIN, same as an NFC tap.
+        // Left off where one tap can't mean "done": mindset lines and volume
+        // trackers (which need an amount).
+        val zone = directive.zone
+        val canDone = zone != com.evyr.rebuild.data.Zone.MINDSET && (directive.targetOz ?: 0) <= 0
+        if (canDone) {
+            val label = if (directive.requiredScans > 1 &&
+                (zone == com.evyr.rebuild.data.Zone.DAILY || zone == com.evyr.rebuild.data.Zone.WEEKLY)
+            ) "+1" else "DONE"
+            builder.addAction(0, label, ReminderScheduler.actionIntent(context, reminder.id, ReminderAlarmReceiver.ACTION_DONE))
+        }
+        builder.addAction(0, "10 MIN", ReminderScheduler.actionIntent(context, reminder.id, ReminderAlarmReceiver.ACTION_SNOOZE_SHORT))
+        builder.addAction(0, "1 HR", ReminderScheduler.actionIntent(context, reminder.id, ReminderAlarmReceiver.ACTION_SNOOZE_LONG))
+
+        val notification = builder.build()
+        if (isAlarm) notification.flags = notification.flags or android.app.Notification.FLAG_INSISTENT
+        NotificationManagerCompat.from(context).notify(notifId, notification)
+    }
+
+    fun cancelReminderNotification(reminderId: Long) {
+        NotificationManagerCompat.from(context).cancel(reminderNotificationId(reminderId))
+    }
+
+    /** Removes this reminder's channels (all of them, or all but [except]). */
+    fun deleteReminderChannels(reminderId: Long, except: String? = null) {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        val prefix = "${CHANNEL_REMINDER_PREFIX}${reminderId}_"
+        manager.notificationChannels
+            .filter { it.id.startsWith(prefix) && it.id != except }
+            .forEach { manager.deleteNotificationChannel(it.id) }
+    }
+
+    private fun reminderChannelId(reminder: com.evyr.rebuild.data.Reminder): String {
+        val key = "${reminder.soundUri ?: "default"}|${reminder.vibrate}|${reminder.reminderType.name}"
+        return "${CHANNEL_REMINDER_PREFIX}${reminder.id}_${key.hashCode().toUInt()}"
+    }
+
+    // 3000-offset keeps these clear of the fixed departure/arrival/summary ids.
+    private fun reminderNotificationId(reminderId: Long): Int = 3000 + reminderId.toInt()
 }
+
+private const val CHANNEL_REMINDER_PREFIX = "rebuild_rem_"
+private const val GROUP_REMINDERS = "rebuild_reminders_group"

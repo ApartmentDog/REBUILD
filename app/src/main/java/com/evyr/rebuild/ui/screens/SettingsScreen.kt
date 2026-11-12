@@ -212,6 +212,10 @@ fun SettingsScreen(
             existing = null,
             places = places,
             onDismiss = { showAddDialog = false },
+            onSaveWithReminder = { d, h, m ->
+                viewModel.addDirectiveWithReminder(d, h, m, context)
+                showAddDialog = false
+            },
             onSave = { viewModel.addDirective(it); showAddDialog = false }
         )
     }

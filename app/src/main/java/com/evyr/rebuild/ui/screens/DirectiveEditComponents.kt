@@ -126,6 +126,10 @@ fun DirectiveEditDialog(
     defaultZone: Zone = Zone.DAILY,
     places: List<GeofencePlace> = emptyList(),
     onDismiss: () -> Unit,
+    // When given, a NEW directive can be saved with a daily reminder in the
+    // same step. Not offered when editing: an existing directive's reminders
+    // are managed under its bell, where there can be several.
+    onSaveWithReminder: ((Directive, Int, Int) -> Unit)? = null,
     onSave: (Directive) -> Unit
 ) {
     var title by remember { mutableStateOf(existing?.title ?: "") }
@@ -146,6 +150,10 @@ fun DirectiveEditDialog(
     var weekday by remember { mutableStateOf(existing?.weekday) }
     var placeId by remember { mutableStateOf(existing?.placeId) }
     var hardBoost by remember { mutableStateOf(existing?.hardBoost?.takeIf { it > 0 } ?: 10) }
+    var remindOn by remember { mutableStateOf(false) }
+    var remindHour by remember { mutableStateOf(9) }
+    var remindMinute by remember { mutableStateOf(0) }
+    val canQuickRemind = existing == null && onSaveWithReminder != null && zone != Zone.MINDSET
     val checkable = zone == Zone.DAILY || zone == Zone.WEEKLY
     // Location only makes sense for things you do somewhere: checkable items
     // and 🔥 objectives. Streaks and mindset lines aren't tied to a place.
@@ -424,6 +432,28 @@ fun DirectiveEditDialog(
                     }
 
                 }
+
+                if (canQuickRemind) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "REMIND ME", fontFamily = TerminalFontFamily, color = NervDim,
+                            fontSize = 9.sp, letterSpacing = 1.sp, modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = remindOn,
+                            onCheckedChange = { remindOn = it },
+                            colors = SwitchDefaults.colors(checkedTrackColor = NervOrange)
+                        )
+                    }
+                    if (remindOn) {
+                        ReminderTimeField(remindHour, remindMinute) { h, m -> remindHour = h; remindMinute = m }
+                        Text(
+                            "Every day at this time. Tone, repeat-until-done and place options are under the bell afterwards.",
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -431,7 +461,7 @@ fun DirectiveEditDialog(
                 enabled = title.isNotBlank() && !missingWeekday,
                 onClick = {
                 if (title.isNotBlank() && !missingWeekday) {
-                    onSave(
+                    val built = (
                         (existing ?: Directive(title = title, zone = zone, kind = kind))
                             .copy(
                                 title = title,
@@ -472,6 +502,12 @@ fun DirectiveEditDialog(
                                 hardClearedEpochMs = if (zone == Zone.HARD) existing?.hardClearedEpochMs else null
                             )
                     )
+                    val withReminder = onSaveWithReminder
+                    if (remindOn && canQuickRemind && withReminder != null) {
+                        withReminder(built, remindHour, remindMinute)
+                    } else {
+                        onSave(built)
+                    }
                 }
             }) {
                 Text("SAVE", fontFamily = TerminalFontFamily, color = NervGreen)
@@ -516,6 +552,65 @@ fun ReminderManagementDialog(
     var placeCondition by remember { mutableStateOf(com.evyr.rebuild.data.PlaceCondition.ANYWHERE) }
     var selectedPlaceId by remember { mutableStateOf<Long?>(null) }
     val places by viewModel.geofencePlaces.collectAsState()
+    // Non-null while an existing reminder is loaded into the form for editing.
+    var editing by remember { mutableStateOf<Reminder?>(null) }
+    var soundUri by remember { mutableStateOf<String?>(null) }
+    var vibrate by remember { mutableStateOf(true) }
+    var renagMinutes by remember { mutableStateOf(0) }
+
+    val tonePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val picked = result.data?.getParcelableExtra<android.net.Uri>(
+                android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI
+            )
+            soundUri = picked?.toString()
+        }
+    }
+    val toneLabel = remember(soundUri) {
+        soundUri?.let { uri ->
+            runCatching {
+                android.media.RingtoneManager.getRingtone(context, android.net.Uri.parse(uri))?.getTitle(context)
+            }.getOrNull()
+        } ?: "Default alarm tone"
+    }
+
+    fun resetForm() {
+        editing = null
+        message = ""
+        reminderType = com.evyr.rebuild.data.ReminderType.NOTIFICATION
+        calRecurrence = RecurrenceType.NONE
+        calSelectedDays = setOf()
+        calIntervalText = ""
+        triggerType = com.evyr.rebuild.data.ReminderTrigger.TIME
+        selectedDays = setOf()
+        placeCondition = com.evyr.rebuild.data.PlaceCondition.ANYWHERE
+        selectedPlaceId = null
+        soundUri = null
+        vibrate = true
+        renagMinutes = 0
+    }
+
+    fun loadForEdit(r: Reminder) {
+        editing = r
+        hour = r.hour
+        minute = r.minute
+        message = r.customMessage ?: ""
+        reminderType = r.reminderType
+        calRecurrence = r.calendarRecurrenceType
+        calSelectedDays = r.calendarRecurrenceDays?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.toSet() ?: setOf()
+        calIntervalText = r.calendarRecurrenceIntervalDays?.toString() ?: ""
+        triggerType = r.triggerType
+        selectedDays = r.days?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.toSet() ?: setOf()
+        placeCondition = r.placeCondition
+        selectedPlaceId = r.placeId
+        soundUri = r.soundUri
+        vibrate = r.vibrate
+        renagMinutes = r.renagMinutes
+        showAddForm = true
+    }
 
     // Pending save, held until calendar permission is granted (or denied).
     var pendingCalendarSave by remember { mutableStateOf<Reminder?>(null) }
@@ -585,7 +680,7 @@ fun ReminderManagementDialog(
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.weight(1f).clickable { loadForEdit(r) }) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 val placeLabel = r.placeId?.let { id -> places.find { it.id == id }?.label }
                                 Text(
@@ -625,6 +720,7 @@ fun ReminderManagementDialog(
                                                 .filter { it in 1..7 }.sorted().map { names[it] }
                                             if (picked.isNotEmpty()) append("  ${picked.joinToString("/")}")
                                         }
+                                        if (r.renagMinutes > 0) append("  ↻${r.renagMinutes}M")
                                     },
                                     fontFamily = TerminalFontFamily, color = NervDim, fontSize = 8.sp, letterSpacing = 1.sp
                                 )
@@ -648,6 +744,8 @@ fun ReminderManagementDialog(
                         )
                         IconButton(onClick = {
                             com.evyr.rebuild.notification.ReminderScheduler.cancel(context, r)
+                            com.evyr.rebuild.notification.NotificationHelper(context).deleteReminderChannels(r.id)
+                            if (editing?.id == r.id) { resetForm(); showAddForm = false }
                             viewModel.deleteReminder(r)
                         }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Delete reminder", tint = NervRed, modifier = Modifier.size(16.dp))
@@ -660,11 +758,7 @@ fun ReminderManagementDialog(
                 if (showAddForm) {
                     Text("TIME", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        ReminderTimeStepper("HOUR", hour, 0, 23) { hour = it }
-                        Text(":", fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 16.sp)
-                        ReminderTimeStepper("MIN", minute, 0, 59) { minute = it }
-                    }
+                    ReminderTimeField(hour, minute) { h, m -> hour = h; minute = m }
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = message,
@@ -756,6 +850,78 @@ fun ReminderManagementDialog(
                             else -> {}
                         }
                     }
+                    if (reminderType != com.evyr.rebuild.data.ReminderType.CALENDAR) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("TONE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "♪ ${toneLabel.uppercase()}",
+                                fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 10.sp,
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .background(NervPanelBorder, RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        val intent = android.content.Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_ALL)
+                                            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                                            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                            putExtra(
+                                                android.media.RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI,
+                                                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                                            )
+                                            putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Reminder tone")
+                                            soundUri?.let {
+                                                putExtra(
+                                                    android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI,
+                                                    android.net.Uri.parse(it)
+                                                )
+                                            }
+                                        }
+                                        runCatching { tonePicker.launch(intent) }
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                            if (soundUri != null) {
+                                Text(
+                                    "RESET", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp,
+                                    modifier = Modifier.clickable { soundUri = null }.padding(6.dp)
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("VIBRATE", fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = vibrate,
+                                onCheckedChange = { vibrate = it },
+                                colors = SwitchDefaults.colors(checkedTrackColor = NervOrange)
+                            )
+                        }
+                        Text("IF IT'S STILL NOT DONE, AGAIN EVERY", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(0 to "OFF", 5 to "5M", 15 to "15M", 30 to "30M", 60 to "1H").forEach { (mins, label) ->
+                                val on = renagMinutes == mins
+                                Text(
+                                    label,
+                                    fontFamily = TerminalFontFamily,
+                                    color = if (on) NervBackground else NervGreen,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier
+                                        .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
+                                        .clickable { renagMinutes = mins }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                        if (renagMinutes > 0) {
+                            Text(
+                                "Up to 3 more times. Stops as soon as it's done.",
+                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                            )
+                        }
+                    }
+
                     Spacer(Modifier.height(10.dp))
                     Text("FIRES", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
@@ -874,7 +1040,7 @@ fun ReminderManagementDialog(
 
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { showAddForm = false }) {
+                        TextButton(onClick = { resetForm(); showAddForm = false }) {
                             Text("CANCEL", fontFamily = TerminalFontFamily, color = NervDim)
                         }
                         val placeRequired = triggerType != com.evyr.rebuild.data.ReminderTrigger.TIME ||
@@ -882,7 +1048,20 @@ fun ReminderManagementDialog(
                         Button(
                             enabled = !placeRequired || selectedPlaceId != null,
                             onClick = {
+                                val old = editing
+                                val isCalendar = reminderType == com.evyr.rebuild.data.ReminderType.CALENDAR
+                                // Switching an edited reminder away from CALENDAR:
+                                // remove the event it owned, or it's orphaned.
+                                if (old != null && old.reminderType == com.evyr.rebuild.data.ReminderType.CALENDAR && !isCalendar) {
+                                    com.evyr.rebuild.notification.ReminderScheduler.cancel(context, old)
+                                }
                                 val newReminder = Reminder(
+                                    id = old?.id ?: 0,
+                                    enabled = old?.enabled ?: true,
+                                    calendarEventId = if (isCalendar) old?.calendarEventId else null,
+                                    soundUri = soundUri,
+                                    vibrate = vibrate,
+                                    renagMinutes = renagMinutes,
                                     directiveId = directive.id,
                                     hour = hour,
                                     minute = minute,
@@ -904,20 +1083,12 @@ fun ReminderManagementDialog(
                                         placeCondition else com.evyr.rebuild.data.PlaceCondition.ANYWHERE
                                 )
                                 saveReminderRouted(newReminder)
-                                message = ""
-                                reminderType = com.evyr.rebuild.data.ReminderType.NOTIFICATION
-                                calRecurrence = RecurrenceType.NONE
-                                calSelectedDays = setOf()
-                                calIntervalText = ""
-                                triggerType = com.evyr.rebuild.data.ReminderTrigger.TIME
-                                selectedDays = setOf()
-                                placeCondition = com.evyr.rebuild.data.PlaceCondition.ANYWHERE
-                                selectedPlaceId = null
+                                resetForm()
                                 showAddForm = false
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = NervOrange, contentColor = NervBackground)
                         ) {
-                            Text("ADD", fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
+                            Text(if (editing != null) "SAVE" else "ADD", fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
                         }
                     }
                 } else {
@@ -927,7 +1098,7 @@ fun ReminderManagementDialog(
                         color = NervOrange,
                         fontSize = 12.sp,
                         modifier = Modifier
-                            .clickable { showAddForm = true }
+                            .clickable { resetForm(); showAddForm = true }
                             .padding(vertical = 6.dp)
                     )
                 }
@@ -941,32 +1112,38 @@ fun ReminderManagementDialog(
     )
 }
 
-// Named distinctly from the HourStepper in NotificationSettingsSection.kt (a
-// different file, quiet-hours-specific) to avoid any ambiguity between two
-// same-purpose-but-different-signature composables living in the same package.
+/** Tap-to-set time (the system clock dialog) plus a few presets. Replaced
+ *  +/- steppers that moved one minute per tap. */
 @Composable
-private fun ReminderTimeStepper(label: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontFamily = TerminalFontFamily, color = NervDim, fontSize = 8.sp)
-        Row(verticalAlignment = Alignment.CenterVertically) {
+private fun ReminderTimeField(hour: Int, minute: Int, onPick: (Int, Int) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            "%02d:%02d".format(hour, minute),
+            fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 22.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .background(NervPanelBorder, RoundedCornerShape(6.dp))
+                .clickable {
+                    android.app.TimePickerDialog(
+                        context,
+                        { _, h, m -> onPick(h, m) },
+                        hour, minute,
+                        android.text.format.DateFormat.is24HourFormat(context)
+                    ).show()
+                }
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        )
+        listOf(6 to "6A", 12 to "NOON", 17 to "5P", 21 to "9P").forEach { (h, label) ->
+            val on = hour == h && minute == 0
             Text(
-                "-",
-                fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 16.sp,
+                label,
+                fontFamily = TerminalFontFamily,
+                color = if (on) NervBackground else NervGreen,
+                fontSize = 9.sp,
                 modifier = Modifier
-                    .clickable { onChange(if (value <= min) max else value - 1) }
-                    .padding(8.dp)
-            )
-            Text(
-                "%02d".format(value),
-                fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 16.sp,
-                modifier = Modifier.padding(horizontal = 6.dp)
-            )
-            Text(
-                "+",
-                fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 16.sp,
-                modifier = Modifier
-                    .clickable { onChange(if (value >= max) min else value + 1) }
-                    .padding(8.dp)
+                    .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
+                    .clickable { onPick(h, 0) }
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
             )
         }
     }

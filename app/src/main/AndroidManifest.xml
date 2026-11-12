@@ -127,6 +127,10 @@
             android:name=".notification.ReminderAlarmReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".notification.DigestReceiver"
+            android:exported="false" />
+
         <!--
           BOOT_COMPLETED receivers must be exported="true" on modern Android for
           the system to actually deliver the broadcast. This receiver has no

@@ -285,7 +285,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         }
                     }
                     com.evyr.rebuild.notification.NotificationHelper(appContext)
-                        .showReminder(reminder.id, directive.title, reminder.customMessage)
+                        .showReminder(reminder, directive)
                     GeofenceDebugLog.log(appContext, "fired ${trigger.name} reminder for ${directive.title}")
                 }
         }

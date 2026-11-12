@@ -50,6 +50,7 @@ fun DashboardScreen(
     val completions by viewModel.todayCompletions.collectAsState()
     val streaks by viewModel.streaks.collectAsState()
     val hard by viewModel.hardItems.collectAsState()
+    val mostMissed by viewModel.mostMissed.collectAsState()
     val places by viewModel.geofencePlaces.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -382,6 +383,9 @@ fun DashboardScreen(
                         )
                     }
                 }
+                if (selectedZone == 0 && mostMissed.isNotEmpty()) {
+                    item { MostMissedPanel(mostMissed) }
+                }
             }
         }
 
@@ -444,6 +448,37 @@ fun DashboardScreen(
 }
 
 private val HardOrange = Color(0xFFFF6A00)
+
+/** The directives skipped most over the last 30 days, worst first. */
+@Composable
+private fun MostMissedPanel(stats: List<com.evyr.rebuild.data.AppRepository.MissStat>) {
+    EvaPanel(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(
+                "MOST MISSED · LAST 30 DAYS",
+                fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp,
+                letterSpacing = 2.sp, fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(4.dp))
+            stats.forEach { s ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        s.directive.title.uppercase(),
+                        fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "${s.missed} OF ${s.due}",
+                        fontFamily = TerminalFontFamily, color = EvaRed, fontSize = 12.sp, fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
 
 /**
  * 🔥 one-time objectives. Active ones on top with a CLEAR button (confirmed --

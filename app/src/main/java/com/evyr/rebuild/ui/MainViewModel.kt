@@ -129,6 +129,25 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         viewModelScope.launch { repo.addOrUpdateDirective(directive) }
     }
 
+    /** New directive plus a timed reminder for it in one go, so setting a
+     *  reminder isn't a second trip through Settings. */
+    fun addDirectiveWithReminder(directive: Directive, hour: Int, minute: Int, context: android.content.Context) {
+        val app = context.applicationContext
+        viewModelScope.launch {
+            val id = repo.addOrUpdateDirective(directive)
+            val reminder = Reminder(directiveId = id, hour = hour, minute = minute)
+            val saved = reminder.copy(id = repo.upsertReminder(reminder))
+            com.evyr.rebuild.notification.ReminderScheduler.schedule(app, saved)
+        }
+    }
+
+    /** Top misses over the last 30 days; recomputed when directives change or
+     *  the date rolls over. */
+    val mostMissed: StateFlow<List<AppRepository.MissStat>> =
+        combine(repo.observeAllDirectives(), repo.observeTodayKey()) { _, _ -> Unit }
+            .mapLatest { repo.mostMissed() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     /** Deletes, then cancels the alarms its reminders had armed -- removing
      *  the rows alone left them in AlarmManager until the next app open. */
     fun deleteDirective(directive: Directive, context: android.content.Context? = null) {
@@ -407,6 +426,7 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         val app = context.applicationContext
         com.evyr.rebuild.notification.ReminderScheduler.rescheduleAll(app, repo)
         com.evyr.rebuild.location.GeofenceSync.reregister(app, "after restore")
+        com.evyr.rebuild.notification.DigestScheduler.scheduleAll(app, repo.getNotificationPrefs())
     }
 }
 
