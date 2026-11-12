@@ -30,9 +30,16 @@ class RebuildWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_COMPLETE = "com.evyr.rebuild.widget.COMPLETE"
         const val EXTRA_DIRECTIVE_ID = "directive_id"
-        private const val MAX_ROWS = 4
+        // The layout has 10 rows; how many are used depends on how tall the
+        // widget has been resized (see rowsFor). 4 fit at the default 2-cell height.
+        private const val MIN_ROWS = 4
+        private const val MAX_ROWS = 10
+        private const val BASE_HEIGHT_DP = 110
+        private const val ROW_HEIGHT_DP = 24
         private val ROW_IDS = intArrayOf(
-            R.id.widget_row_0, R.id.widget_row_1, R.id.widget_row_2, R.id.widget_row_3
+            R.id.widget_row_0, R.id.widget_row_1, R.id.widget_row_2, R.id.widget_row_3,
+            R.id.widget_row_4, R.id.widget_row_5, R.id.widget_row_6, R.id.widget_row_7,
+            R.id.widget_row_8, R.id.widget_row_9
         )
         // Rows are now a container (accent bar + text) rather than a bare
         // TextView, so visibility and the tap PendingIntent apply to the
@@ -41,7 +48,10 @@ class RebuildWidgetProvider : AppWidgetProvider() {
         // hidden entirely.
         private val ROW_CONTAINER_IDS = intArrayOf(
             R.id.widget_row_0_container, R.id.widget_row_1_container,
-            R.id.widget_row_2_container, R.id.widget_row_3_container
+            R.id.widget_row_2_container, R.id.widget_row_3_container,
+            R.id.widget_row_4_container, R.id.widget_row_5_container,
+            R.id.widget_row_6_container, R.id.widget_row_7_container,
+            R.id.widget_row_8_container, R.id.widget_row_9_container
         )
 
         /** Redraws every placed instance. Call after anything that changes completion state. */
@@ -107,7 +117,32 @@ class RebuildWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    /** Resizing the widget changes how many rows fit, so redraw. */
+    override fun onAppWidgetOptionsChanged(
+        context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: android.os.Bundle
+    ) {
+        super.onAppWidgetOptionsChanged(context, manager, appWidgetId, newOptions)
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                render(context, manager, AppRepository(RebuildDatabase.getInstance(context)), appWidgetId)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    /** Rows that fit at the widget's current height. Of the two heights the
+     *  launcher reports, MAX_HEIGHT is the portrait one. */
+    private fun rowsFor(manager: AppWidgetManager, widgetId: Int): Int {
+        val heightDp = manager.getAppWidgetOptions(widgetId)
+            .getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
+        if (heightDp <= 0) return MIN_ROWS
+        return (MIN_ROWS + (heightDp - BASE_HEIGHT_DP) / ROW_HEIGHT_DP).coerceIn(MIN_ROWS, MAX_ROWS)
+    }
+
     private suspend fun render(context: Context, manager: AppWidgetManager, repo: AppRepository, widgetId: Int) {
+        val rows = rowsFor(manager, widgetId)
         val open = repo.openDailyDirectivesToday()
         val sync = repo.computeSyncRatio()
         val scanProgress = repo.scanProgressTodayOnce()
@@ -125,13 +160,13 @@ class RebuildWidgetProvider : AppWidgetProvider() {
 
         if (open.isEmpty()) {
             v.setViewVisibility(R.id.widget_empty, View.VISIBLE)
-            ROW_IDS.forEach { v.setViewVisibility(it, View.GONE) }
+            ROW_CONTAINER_IDS.forEach { v.setViewVisibility(it, View.GONE) }
             v.setViewVisibility(R.id.widget_more, View.GONE)
         } else {
             v.setViewVisibility(R.id.widget_empty, View.GONE)
             ROW_IDS.forEachIndexed { i, rowId ->
                 val containerId = ROW_CONTAINER_IDS[i]
-                val d = open.getOrNull(i)
+                val d = if (i < rows) open.getOrNull(i) else null
                 if (d == null) {
                     v.setViewVisibility(containerId, View.GONE)
                 } else {
@@ -167,7 +202,7 @@ class RebuildWidgetProvider : AppWidgetProvider() {
                     }
                 }
             }
-            val extra = open.size - MAX_ROWS
+            val extra = open.size - rows
             if (extra > 0) {
                 v.setViewVisibility(R.id.widget_more, View.VISIBLE)
                 v.setTextViewText(R.id.widget_more, "+$extra MORE")

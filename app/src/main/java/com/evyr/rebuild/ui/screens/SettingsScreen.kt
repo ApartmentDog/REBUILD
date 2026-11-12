@@ -47,6 +47,7 @@ fun SettingsScreen(
     val places by viewModel.geofencePlaces.collectAsState()
     val placeNames = remember(places) { places.associate { it.id to it.label } }
     var confirmDelete by remember { mutableStateOf<Directive?>(null) }
+    var showDiagnostics by remember { mutableStateOf(false) }
     val prefs by viewModel.notificationPrefs.collectAsState()
     val context = LocalContext.current
     var currentTheme by remember { mutableStateOf(com.evyr.rebuild.IconSwitcher.currentTheme(context)) }
@@ -86,6 +87,27 @@ fun SettingsScreen(
                     }
                 }
 
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "DIRECTIVES",
+                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp, letterSpacing = 2.sp
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            items(listed, key = { it.id }) { d ->
+                DirectiveEditRow(
+                    directive = d,
+                    onEdit = { editingDirective = d },
+                    onReminders = { managingRemindersFor = d },
+                    // Was a one-tap, no-confirm delete that also wiped history.
+                    onDelete = { confirmDelete = d },
+                    placeLabel = d.placeId?.let { placeNames[it] }
+                )
+            }
+            // Everything below the directive list is set-and-forget. The list
+            // used to be last, under all of it including the debug panels.
+            item {
+                Spacer(Modifier.height(8.dp))
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "NOTIFICATIONS",
@@ -131,22 +153,6 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    "SYNC RATIO DEBUG",
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp, letterSpacing = 2.sp
-                )
-                Spacer(Modifier.height(4.dp))
-                SyncRatioDebugPanel(viewModel = viewModel)
-
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "GEOFENCE DEBUG",
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp, letterSpacing = 2.sp
-                )
-                Spacer(Modifier.height(4.dp))
-                GeofenceDebugSection()
-
-                Spacer(Modifier.height(16.dp))
-                Text(
                     "BACKUP",
                     fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp, letterSpacing = 2.sp
                 )
@@ -175,24 +181,35 @@ fun SettingsScreen(
                 Spacer(Modifier.height(4.dp))
                 MindsetSection(viewModel = viewModel)
 
+
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    "DIRECTIVES",
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp, letterSpacing = 2.sp
+                    (if (showDiagnostics) "▾ " else "▸ ") + "DIAGNOSTICS",
+                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp, letterSpacing = 2.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDiagnostics = !showDiagnostics }
+                        .padding(vertical = 6.dp)
                 )
-                Spacer(Modifier.height(4.dp))
+                if (showDiagnostics) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "SYNC RATIO DEBUG",
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp, letterSpacing = 2.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    SyncRatioDebugPanel(viewModel = viewModel)
+
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "GEOFENCE DEBUG",
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 12.sp, letterSpacing = 2.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    GeofenceDebugSection()
+                }
+                Spacer(Modifier.height(8.dp))
             }
-            items(listed, key = { it.id }) { d ->
-                DirectiveEditRow(
-                    directive = d,
-                    onEdit = { editingDirective = d },
-                    onReminders = { managingRemindersFor = d },
-                    // Was a one-tap, no-confirm delete that also wiped history.
-                    onDelete = { confirmDelete = d },
-                    placeLabel = d.placeId?.let { placeNames[it] }
-                )
-            }
-            item { Spacer(Modifier.height(8.dp)) }
         }
 
         Button(

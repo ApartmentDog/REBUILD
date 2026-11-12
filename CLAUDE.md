@@ -51,8 +51,8 @@ Flow: `LOCK` (`PinLockScreen`) → `PERMISSIONS` (`PermissionFlowScreen`) → `D
 
 | Screen | File | Notes |
 |---|---|---|
-| Dashboard | `ui/screens/DashboardScreen.kt` | Tabs DAILY / WEEKLY / STANDING / 🔥 HARD / SESSIONS (`selectedZone` 0–4). Private pieces: `HardObjectivesPanel`, `CheckableRow` (📍 place line), `StreakRow`, `ZonePanel`, `VolumeEntryDialog`. Code-reveal dialog lives here. |
-| Settings | `ui/screens/SettingsScreen.kt` | Directive list + add/edit/delete-confirm, links to NFC/Locations/Sessions, plus sections below |
+| Dashboard | `ui/screens/DashboardScreen.kt` | Tabs DAILY / WEEKLY / STANDING / 🔥 HARD / SESSIONS (`selectedZone` 0–4). Private pieces: `HardObjectivesPanel`, `CheckableRow` (📍 place line), `StreakRow`, `ZonePanel`, `VolumeEntryDialog`, `MostMissedPanel`. `+ ADD` in the footer opens the directive form on the current tab's zone; long-pressing a row (`combinedClickable`) opens EDIT / REMINDERS / DELETE. Tap and volume trackers have no long-press. Code-reveal dialog lives here. |
+| Settings | `ui/screens/SettingsScreen.kt` | Order: NFC/Locations/Sessions links, directive list (add/edit/delete-confirm), then notifications, identity, backup, mindset, and a collapsed DIAGNOSTICS block (sync + geofence debug) |
 | Directive form | `ui/screens/DirectiveEditComponents.kt` | `DirectiveEditRow`, `DirectiveEditDialog` (zone chips, 🔥 boost, LOCATION, recurrence, weekday, NFC, taps, volume), `AddMindsetLineDialog`, `ReminderManagementDialog` (time/arrival/departure, notification/alarm/calendar) |
 | Settings sections | `NotificationSettingsSection.kt` (`NotificationPrefsPanel`), `BatteryOptimizationSection.kt`, `SyncRatioDebugSection.kt`, `GeofenceDebugSection.kt`, `MindsetSettingsSection.kt` (`MindsetSection`), `BackupSettingsSection.kt` | all in `ui/screens/` |
 | Notebook | `ui/screens/NotebookScreen.kt` | search, tags, media attachments |
@@ -95,7 +95,7 @@ Cheat codes (case-insensitive, in `MainActivity`'s dialog):
 - Tag scan → `AppRepository.handleTagScan` → `incrementScanProgress` (shared with UI taps and the widget).
 
 ## Widget (`widget/RebuildWidgetProvider.kt`)
-RemoteViews with fixed rows (`ROW_IDS` / `ROW_CONTAINER_IDS`, `MAX_ROWS`), layout `res/layout/widget_rebuild.xml`, info `res/xml/rebuild_widget_info.xml`. Tapping a row sends `ACTION_COMPLETE` → `incrementScanProgress`. `refresh(context)` runs from `MainActivity.onPause`. RemoteViews can't use a bare `<View>`.
+RemoteViews with 10 fixed rows (`ROW_IDS` / `ROW_CONTAINER_IDS`); `rowsFor` shows 4–10 of them depending on the widget's resized height (`onAppWidgetOptionsChanged` redraws). Layout `res/layout/widget_rebuild.xml`, info `res/xml/rebuild_widget_info.xml`. Tapping a row sends `ACTION_COMPLETE` → `incrementScanProgress`. `refresh(context)` runs from `MainActivity.onPause`. RemoteViews can't use a bare `<View>`.
 
 ## Security
 `security/PinManager` (EncryptedSharedPreferences PIN), `BiometricUnlock`, `ConfessionPasswordManager`. `MainActivity` is a `FragmentActivity` because BiometricPrompt needs one. An unknown NFC tag must never navigate away from `LOCK`/`PERMISSIONS`.

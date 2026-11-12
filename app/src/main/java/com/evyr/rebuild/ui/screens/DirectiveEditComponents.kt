@@ -134,7 +134,11 @@ fun DirectiveEditDialog(
 ) {
     var title by remember { mutableStateOf(existing?.title ?: "") }
     var zone by remember { mutableStateOf(existing?.zone ?: defaultZone) }
-    var kind by remember { mutableStateOf(existing?.kind ?: (if (defaultZone == Zone.MINDSET) ItemKind.DISPLAY_ONLY else ItemKind.CHECKBOX)) }
+    var kind by remember { mutableStateOf(existing?.kind ?: when (defaultZone) {
+        Zone.MINDSET -> ItemKind.DISPLAY_ONLY
+        Zone.STANDING -> ItemKind.STREAK
+        else -> ItemKind.CHECKBOX
+    }) }
     var nfcOnly by remember { mutableStateOf(existing?.requiresNfcScan ?: false) }
     var requiredScans by remember { mutableStateOf((existing?.requiredScans ?: 1).toString()) }
     var recurrenceType by remember { mutableStateOf(existing?.recurrenceType ?: RecurrenceType.NONE) }

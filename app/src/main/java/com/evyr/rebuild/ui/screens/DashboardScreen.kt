@@ -1,8 +1,11 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.evyr.rebuild.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,6 +54,14 @@ fun DashboardScreen(
     val streaks by viewModel.streaks.collectAsState()
     val hard by viewModel.hardItems.collectAsState()
     val mostMissed by viewModel.mostMissed.collectAsState()
+    // Add / edit / reminders / delete without a trip to Settings. Long-press a
+    // row for the menu; + ADD is in the footer.
+    var showAdd by remember { mutableStateOf(false) }
+    var addZone by remember { mutableStateOf(com.evyr.rebuild.data.Zone.DAILY) }
+    var actionTarget by remember { mutableStateOf<Directive?>(null) }
+    var editTarget by remember { mutableStateOf<Directive?>(null) }
+    var remindersTarget by remember { mutableStateOf<Directive?>(null) }
+    var deleteTarget by remember { mutableStateOf<Directive?>(null) }
     val places by viewModel.geofencePlaces.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -308,6 +319,7 @@ fun DashboardScreen(
                                     scansSoFar = scanProgress[d.id] ?: 0,
                                     placeLabel = d.placeId?.let { placeNames[it] },
                                     isHere = d.placeId != null && d.placeId in herePlaceIds,
+                                    onLongPress = { actionTarget = d },
                                     onToggle = { viewModel.toggleComplete(d, it) },
                                     onUnlock = { viewModel.unlockDirective(d.id) },
                                     onTapProgress = { viewModel.tapProgress(it) }
@@ -351,6 +363,7 @@ fun DashboardScreen(
                                     scansSoFar = scanProgress[d.id] ?: 0,
                                     placeLabel = d.placeId?.let { placeNames[it] },
                                     isHere = d.placeId != null && d.placeId in herePlaceIds,
+                                    onLongPress = { actionTarget = d },
                                     onToggle = { viewModel.toggleComplete(d, it) },
                                     onUnlock = {},
                                     onTapProgress = { viewModel.tapProgress(it) }
@@ -366,6 +379,7 @@ fun DashboardScreen(
                                     directive = d,
                                     streak = streak,
                                     heldToday = streak?.lastHeldDate == today,
+                                    onLongPress = { actionTarget = d },
                                     viewModel = viewModel,
                                     onConfirmToday = { viewModel.confirmStreak(d.id) },
                                     onBreak = { note -> viewModel.breakStreak(d.id, note) }
@@ -379,6 +393,7 @@ fun DashboardScreen(
                             placeNames = placeNames,
                             herePlaceIds = herePlaceIds,
                             unlocked = vault.isUnlocked(clearedHard),
+                            onLongPress = { actionTarget = it },
                             viewModel = viewModel
                         )
                     }
@@ -393,6 +408,27 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            if (selectedZone != 4) {
+                Text(
+                    "+ ADD",
+                    fontFamily = TerminalFontFamily,
+                    color = EvaYellow,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable {
+                            // Opens on the zone of the tab you're looking at.
+                            addZone = when (selectedZone) {
+                                1 -> com.evyr.rebuild.data.Zone.WEEKLY
+                                2 -> com.evyr.rebuild.data.Zone.STANDING
+                                3 -> com.evyr.rebuild.data.Zone.HARD
+                                else -> com.evyr.rebuild.data.Zone.DAILY
+                            }
+                            showAdd = true
+                        }
+                        .padding(vertical = 6.dp)
+                )
+            }
             Text(
                 "NOTEBOOK",
                 fontFamily = TerminalFontFamily,
@@ -416,6 +452,93 @@ fun DashboardScreen(
         }
         VersionFooter(compact = true, onSecretTap = onOpenSecretPrompt, modifier = Modifier.padding(horizontal = 20.dp))
         Spacer(Modifier.height(8.dp))
+    }
+
+    if (showAdd) {
+        DirectiveEditDialog(
+            existing = null,
+            defaultZone = addZone,
+            places = places,
+            onDismiss = { showAdd = false },
+            onSaveWithReminder = { d, h, m ->
+                viewModel.addDirectiveWithReminder(d, h, m, context)
+                showAdd = false
+            },
+            onSave = { viewModel.addDirective(it); showAdd = false }
+        )
+    }
+
+    actionTarget?.let { d ->
+        AlertDialog(
+            onDismissRequest = { actionTarget = null },
+            containerColor = EvaPanelBg,
+            title = {
+                Text(d.title.uppercase(), fontFamily = TerminalFontFamily, color = EvaYellow, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    listOf<Pair<String, () -> Unit>>(
+                        "EDIT" to { editTarget = d },
+                        "REMINDERS" to { remindersTarget = d },
+                        "DELETE" to { deleteTarget = d }
+                    ).forEach { (label, action) ->
+                        Text(
+                            label,
+                            fontFamily = TerminalFontFamily,
+                            color = if (label == "DELETE") EvaRed else EvaTextPrimary,
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { actionTarget = null; action() }
+                                .padding(vertical = 12.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { actionTarget = null }) {
+                    Text("CLOSE", fontFamily = TerminalFontFamily, color = EvaTextDim)
+                }
+            }
+        )
+    }
+
+    editTarget?.let { d ->
+        DirectiveEditDialog(
+            existing = d,
+            places = places,
+            onDismiss = { editTarget = null },
+            onSave = { viewModel.addDirective(it); editTarget = null }
+        )
+    }
+
+    remindersTarget?.let { d ->
+        ReminderManagementDialog(directive = d, viewModel = viewModel, onDismiss = { remindersTarget = null })
+    }
+
+    deleteTarget?.let { d ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            containerColor = EvaPanelBg,
+            title = { Text("DELETE DIRECTIVE?", fontFamily = TerminalFontFamily, color = EvaRed, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "\"${d.title}\" and its reminders and streak go with it. Can't be undone.",
+                    fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 12.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteDirective(d, context)
+                    deleteTarget = null
+                }) { Text("DELETE", fontFamily = TerminalFontFamily, color = EvaRed, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text("CANCEL", fontFamily = TerminalFontFamily, color = EvaTextDim)
+                }
+            }
+        )
     }
 
     if (showReveal) {
@@ -491,6 +614,7 @@ private fun HardObjectivesPanel(
     placeNames: Map<Long, String>,
     herePlaceIds: Set<Long>,
     unlocked: Boolean,
+    onLongPress: (Directive) -> Unit,
     viewModel: MainViewModel
 ) {
     val active = items.filter { it.hardClearedEpochMs == null && !it.locked }
@@ -526,7 +650,10 @@ private fun HardObjectivesPanel(
             }
             active.forEach { d ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(onClick = {}, onLongClick = { onLongPress(d) })
+                        .padding(vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("🔥", fontSize = 16.sp)
@@ -634,6 +761,7 @@ private fun CheckableRow(
     scansSoFar: Int = 0,
     placeLabel: String? = null,
     isHere: Boolean = false,
+    onLongPress: () -> Unit = {},
     onToggle: (Boolean) -> Unit,
     onUnlock: () -> Unit,
     onTapProgress: (Long) -> Unit = {}
@@ -645,9 +773,12 @@ private fun CheckableRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = !directive.locked) {
-                    if (directive.expandableContent != null) expanded = !expanded
-                },
+                .combinedClickable(
+                    onClick = {
+                        if (!directive.locked && directive.expandableContent != null) expanded = !expanded
+                    },
+                    onLongClick = onLongPress
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val checkEnabled = !directive.locked && !manualToggleBlocked
@@ -738,6 +869,7 @@ private fun StreakRow(
     directive: Directive,
     streak: Streak?,
     heldToday: Boolean,
+    onLongPress: () -> Unit = {},
     viewModel: MainViewModel,
     onConfirmToday: () -> Unit,
     onBreak: (String?) -> Unit
@@ -758,6 +890,7 @@ private fun StreakRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .combinedClickable(onClick = {}, onLongClick = onLongPress)
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
