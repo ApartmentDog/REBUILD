@@ -166,11 +166,11 @@ fun NfcRegistrationScreen(
                         }
                         Text(
                             "Tapping this tag shows all your other tagged items and whether you've tapped them today, instead of ticking off one directive.",
-                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                         )
                         if (!isChecklist) {
                         Spacer(Modifier.height(12.dp))
-                        Text("LINK TO DIRECTIVE (OPTIONAL)", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                        Text("LINK TO DIRECTIVE (OPTIONAL)", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                         daily.forEach { d ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -250,7 +250,7 @@ private fun ListToggle(label: String, on: Boolean, onClick: () -> Unit) {
         label,
         fontFamily = TerminalFontFamily,
         color = if (on) Color.Black else NervDim,
-        fontSize = 10.sp,
+        fontSize = 11.sp,
         modifier = Modifier
             .background(if (on) NervOrange else Color.Transparent, RoundedCornerShape(4.dp))
             .clickable { onClick() }
@@ -285,24 +285,24 @@ private fun TagRow(tag: NfcTag, daily: List<Directive>, fmt: SimpleDateFormat, v
                 },
                 fontFamily = TerminalFontFamily,
                 color = if (tag.opensChecklist) NervOrange else NervDim,
-                fontSize = 10.sp
+                fontSize = 11.sp
             )
             tag.lastScanEpochMs?.let {
                 Text(
                     "LAST SCAN — ${fmt.format(Date(it))}",
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                 )
             }
             missPattern?.let { (weekday, misses) ->
                 Text(
                     "MOST MISSED ON ${WEEKDAY_NAMES.getOrElse(weekday) { "?" }} ($misses in last 60d)",
-                    fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 10.sp
+                    fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 11.sp
                 )
             }
             if (!tag.opensChecklist) {
                 // Which door checklist this item shows on.
                 Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("CHECKLISTS:", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                    Text("CHECKLISTS:", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                     Spacer(Modifier.width(8.dp))
                     ListToggle("OUT", tag.onLeavingList) {
                         viewModel.setTagLists(tag.tagUid, leaving = !tag.onLeavingList, arriving = tag.onArrivingList)

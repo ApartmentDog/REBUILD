@@ -56,6 +56,29 @@ fun DashboardScreen(
     val mostMissed by viewModel.mostMissed.collectAsState()
     // Add / edit / reminders / delete without a trip to Settings. Long-press a
     // row for the menu; + ADD is in the footer.
+    // Completion feedback: a short buzz when you act, and the Sync Ratio
+    // change flashed on the sync panel. The flash only shows for a change that
+    // follows something you just did here -- not the number loading on open,
+    // or moving because of a widget tap or the date rolling over.
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var actedAt by remember { mutableStateOf(0L) }
+    var lastSync by remember { mutableStateOf<Int?>(null) }
+    var syncFlash by remember { mutableStateOf<Int?>(null) }
+    val acted: () -> Unit = {
+        actedAt = System.currentTimeMillis()
+        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+    }
+    LaunchedEffect(syncRatio) {
+        val prev = lastSync
+        lastSync = syncRatio
+        if (prev != null && prev != syncRatio && System.currentTimeMillis() - actedAt < 4000) {
+            syncFlash = syncRatio - prev
+            kotlinx.coroutines.delay(1500)
+            syncFlash = null
+        }
+    }
+    // The 10-day trend chart sits behind a tap so the list starts higher.
+    var showTrend by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
     var addZone by remember { mutableStateOf(com.evyr.rebuild.data.Zone.DAILY) }
     var actionTarget by remember { mutableStateOf<Directive?>(null) }
@@ -114,18 +137,20 @@ fun DashboardScreen(
                         "EVYR · UNIT 01",
                         fontFamily = TerminalFontFamily,
                         color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         letterSpacing = 1.5.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFF141416))
-                        .border(2.dp, EvaYellow)
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Text("$syncRatio%", fontFamily = TerminalFontFamily, color = EvaYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF141416))
+                            .border(2.dp, EvaYellow)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text("$syncRatio%", fontFamily = TerminalFontFamily, color = EvaYellow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -137,13 +162,33 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             shadowCorner = EvaPanelShadowCorner.BOTTOM_RIGHT
         ) {
-            Column {
-                com.evyr.rebuild.ui.components.SyncRatioBar(percent = syncRatio)
+            Column(modifier = Modifier.clickable { showTrend = !showTrend }) {
+                Box {
+                    com.evyr.rebuild.ui.components.SyncRatioBar(percent = syncRatio)
+                    // What that last action was worth, shown for a moment
+                    // under the SYNC RATIO label.
+                    syncFlash?.let { d ->
+                        Text(
+                            (if (d > 0) "+" else "") + "$d%",
+                            fontFamily = TerminalFontFamily,
+                            color = if (d > 0) EvaGreen else EvaRedLight,
+                            fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.TopStart).padding(start = 10.dp, top = 24.dp)
+                        )
+                    }
+                }
                 // Trend: sync_history has been recorded daily all along but nothing
                 // ever read it back, so the number had no context. Oldest-to-newest
                 // left to right; observeRecent returns newest first, hence reversed.
                 val history = syncHistory.map { it.syncRatioPercent.toFloat() }.reversed()
-                if (history.size >= 2) {
+                if (history.size >= 2 && !showTrend) {
+                    Text(
+                        "TAP FOR TREND",
+                        fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp, letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 6.dp)
+                    )
+                }
+                if (history.size >= 2 && showTrend) {
                     MiniLineChart(
                         values = history,
                         lineColor = EvaYellow,
@@ -167,7 +212,7 @@ fun DashboardScreen(
                         },
                         fontFamily = TerminalFontFamily,
                         color = if (delta >= 0) EvaGreen else EvaRed,
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         letterSpacing = 1.sp,
                         modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
                     )
@@ -273,7 +318,7 @@ fun DashboardScreen(
                                             total = d.requiredScans,
                                             label = d.title,
                                             compact = true,
-                                            onTap = { viewModel.tapProgress(d.id) }
+                                            onTap = { acted(); viewModel.tapProgress(d.id) }
                                         )
                                     }
                                 }
@@ -320,9 +365,9 @@ fun DashboardScreen(
                                     placeLabel = d.placeId?.let { placeNames[it] },
                                     isHere = d.placeId != null && d.placeId in herePlaceIds,
                                     onLongPress = { actionTarget = d },
-                                    onToggle = { viewModel.toggleComplete(d, it) },
+                                    onToggle = { acted(); viewModel.toggleComplete(d, it) },
                                     onUnlock = { viewModel.unlockDirective(d.id) },
-                                    onTapProgress = { viewModel.tapProgress(it) }
+                                    onTapProgress = { acted(); viewModel.tapProgress(it) }
                                 )
                             }
                         }
@@ -351,7 +396,7 @@ fun DashboardScreen(
                                 weekly.forEach { d ->
                                     Text(
                                         "${d.title} — ${describeWeeklySchedule(d)}",
-                                        fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp,
+                                        fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp,
                                         modifier = Modifier.padding(vertical = 2.dp)
                                     )
                                 }
@@ -364,9 +409,9 @@ fun DashboardScreen(
                                     placeLabel = d.placeId?.let { placeNames[it] },
                                     isHere = d.placeId != null && d.placeId in herePlaceIds,
                                     onLongPress = { actionTarget = d },
-                                    onToggle = { viewModel.toggleComplete(d, it) },
+                                    onToggle = { acted(); viewModel.toggleComplete(d, it) },
                                     onUnlock = {},
-                                    onTapProgress = { viewModel.tapProgress(it) }
+                                    onTapProgress = { acted(); viewModel.tapProgress(it) }
                                 )
                             }
                         }
@@ -381,7 +426,7 @@ fun DashboardScreen(
                                     heldToday = streak?.lastHeldDate == today,
                                     onLongPress = { actionTarget = d },
                                     viewModel = viewModel,
-                                    onConfirmToday = { viewModel.confirmStreak(d.id) },
+                                    onConfirmToday = { acted(); viewModel.confirmStreak(d.id) },
                                     onBreak = { note -> viewModel.breakStreak(d.id, note) }
                                 )
                             }
@@ -394,6 +439,7 @@ fun DashboardScreen(
                             herePlaceIds = herePlaceIds,
                             unlocked = vault.isUnlocked(clearedHard),
                             onLongPress = { actionTarget = it },
+                            onActed = acted,
                             viewModel = viewModel
                         )
                     }
@@ -558,7 +604,7 @@ fun DashboardScreen(
                         fontWeight = FontWeight.Bold, letterSpacing = 6.sp
                     )
                     Spacer(Modifier.height(8.dp))
-                    Text("Enter it where the other codes go.", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
+                    Text("Enter it where the other codes go.", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp)
                 }
             },
             confirmButton = {
@@ -579,7 +625,7 @@ private fun MostMissedPanel(stats: List<com.evyr.rebuild.data.AppRepository.Miss
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 "MOST MISSED · LAST 30 DAYS",
-                fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp,
+                fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp,
                 letterSpacing = 2.sp, fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(4.dp))
@@ -615,6 +661,7 @@ private fun HardObjectivesPanel(
     herePlaceIds: Set<Long>,
     unlocked: Boolean,
     onLongPress: (Directive) -> Unit,
+    onActed: () -> Unit,
     viewModel: MainViewModel
 ) {
     val active = items.filter { it.hardClearedEpochMs == null && !it.locked }
@@ -637,7 +684,7 @@ private fun HardObjectivesPanel(
                     if (unlocked) "SEAL BROKEN — CODE ACQUIRED" else "SEALED · $n / $required",
                     fontFamily = TerminalFontFamily,
                     color = if (unlocked) EvaYellow else EvaTextDim,
-                    fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold
+                    fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold
                 )
             }
             Spacer(Modifier.height(8.dp))
@@ -667,10 +714,10 @@ private fun HardObjectivesPanel(
                         Text(
                             "+${d.hardBoost}% SYNC" + (d.placeId?.let { placeNames[it] }?.let { " · 📍 ${it.uppercase()}" } ?: "") +
                                 if (d.placeId != null && d.placeId in herePlaceIds) " · YOU'RE HERE" else "",
-                            fontFamily = TerminalFontFamily, color = HardOrange, fontSize = 9.sp
+                            fontFamily = TerminalFontFamily, color = HardOrange, fontSize = 11.sp
                         )
                         d.expandableContent?.let {
-                            Text(it, fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
+                            Text(it, fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp)
                         }
                     }
                     TextButton(onClick = { confirming = d }) {
@@ -683,7 +730,7 @@ private fun HardObjectivesPanel(
                 Spacer(Modifier.height(10.dp))
                 HazardStripe(height = 4.dp)
                 Spacer(Modifier.height(6.dp))
-                Text("CLEARED", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp, letterSpacing = 2.sp)
+                Text("CLEARED", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp, letterSpacing = 2.sp)
                 cleared.forEach { d ->
                     val boost = viewModel.hardBoostNow(d)
                     Row(
@@ -699,12 +746,12 @@ private fun HardObjectivesPanel(
                             Text(
                                 if (boost > 0f) "BOOST ACTIVE +${"%.1f".format(boost)}%" else "BOOST SPENT",
                                 fontFamily = TerminalFontFamily,
-                                color = if (boost > 0f) HardOrange else EvaTextDim, fontSize = 9.sp
+                                color = if (boost > 0f) HardOrange else EvaTextDim, fontSize = 11.sp
                             )
                         }
                         if (viewModel.isClearedToday(d)) {
                             TextButton(onClick = { viewModel.unclearHardObjective(d.id) }) {
-                                Text("UNDO", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
+                                Text("UNDO", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp)
                             }
                         }
                     }
@@ -726,6 +773,7 @@ private fun HardObjectivesPanel(
             },
             confirmButton = {
                 TextButton(onClick = {
+                    onActed()
                     viewModel.clearHardObjective(d.id)
                     confirming = null
                 }) { Text("CLEARED", fontFamily = TerminalFontFamily, color = HardOrange, fontWeight = FontWeight.Bold) }
@@ -819,7 +867,7 @@ private fun CheckableRow(
                 text = "📍 ${placeLabel.uppercase()}" + if (isHere) " · YOU'RE HERE" else "",
                 fontFamily = TerminalFontFamily,
                 color = if (isHere && !isDone) EvaYellow else EvaTextDim,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 modifier = Modifier.padding(start = 36.dp)
             )
         }
@@ -828,7 +876,7 @@ private fun CheckableRow(
                 text = "LOCKED — BUILD VOICE PROTOCOL CONSISTENCY TO UNLOCK",
                 fontFamily = TerminalFontFamily,
                 color = EvaTextDim,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 modifier = Modifier.padding(start = 36.dp, bottom = 4.dp)
             )
         } else if (manualToggleBlocked && directive.requiredScans > 1) {
@@ -836,7 +884,7 @@ private fun CheckableRow(
                 text = "NFC TAPS: $scansSoFar / ${directive.requiredScans}",
                 fontFamily = TerminalFontFamily,
                 color = if (isDone) EvaGreen else EvaYellow,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 modifier = Modifier.padding(start = 36.dp, bottom = 4.dp)
             )
         } else if (manualToggleBlocked) {
@@ -844,7 +892,7 @@ private fun CheckableRow(
                 text = "NFC TAP ONLY — cannot be checked manually",
                 fontFamily = TerminalFontFamily,
                 color = EvaTextDim,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 modifier = Modifier.padding(start = 36.dp, bottom = 4.dp)
             )
         }
@@ -907,14 +955,14 @@ private fun StreakRow(
                     (streak?.bestStreakDays?.takeIf { it > 0 }?.let { " · BEST $it" } ?: ""),
                 fontFamily = TerminalFontFamily,
                 color = EvaTextDim,
-                fontSize = 10.sp
+                fontSize = 11.sp
             )
             breakPattern?.let { (weekday, count) ->
                 Text(
                     text = "BREAKS MOST ON ${WEEKDAY_NAMES.getOrElse(weekday) { "?" }} ($count TIMES)",
                     fontFamily = TerminalFontFamily,
                     color = EvaYellow,
-                    fontSize = 9.sp
+                    fontSize = 11.sp
                 )
             }
         }

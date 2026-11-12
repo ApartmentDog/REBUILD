@@ -93,7 +93,7 @@ fun ConfessionBoothScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "Separate from your app lock. Anything written here stays sealed behind it.",
-                    fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp
+                    fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp
                 )
                 Spacer(Modifier.height(20.dp))
                 OutlinedTextField(
@@ -180,7 +180,7 @@ fun ConfessionBoothScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(24.dp))
                 TextButton(onClick = { showResetConfirm = true }) {
-                    Text("Forgot it? Reset (keeps entries)", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
+                    Text("Forgot it? Reset (keeps entries)", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp)
                 }
             }
 
@@ -303,7 +303,7 @@ private fun ConfessionEntryRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f).clickable(onClick = onToggle)) {
-                Text(dateLabel, fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp)
+                Text(dateLabel, fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                 if (expanded) {
                     Spacer(Modifier.height(6.dp))
                     Text(entry.text, fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 12.sp, lineHeight = 17.sp)

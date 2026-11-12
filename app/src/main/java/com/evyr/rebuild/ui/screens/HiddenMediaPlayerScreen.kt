@@ -175,8 +175,8 @@ fun HiddenMediaPlayerScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                             )
                         )
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(formatMs(positionMs), fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
-                            Text(formatMs(durationMs), fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 10.sp)
+                            Text(formatMs(positionMs), fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp)
+                            Text(formatMs(durationMs), fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp)
                         }
                     }
                 }

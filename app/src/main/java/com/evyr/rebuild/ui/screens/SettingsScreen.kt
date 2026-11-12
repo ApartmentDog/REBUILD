@@ -126,7 +126,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Switches the home-screen icon and name. The launcher may take a moment (or a home-screen refresh) to show the change.",
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -169,14 +169,14 @@ fun SettingsScreen(
                     "SHOW DAILY QUOTE AGAIN",
                     fontFamily = TerminalFontFamily,
                     color = NervOrange,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier
                         .clickable { onResetDailyQuote() }
                         .padding(vertical = 4.dp)
                 )
                 Text(
                     "Clears today's marker — it'll show again next time you unlock, useful for testing.",
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                 )
                 Spacer(Modifier.height(4.dp))
                 MindsetSection(viewModel = viewModel)

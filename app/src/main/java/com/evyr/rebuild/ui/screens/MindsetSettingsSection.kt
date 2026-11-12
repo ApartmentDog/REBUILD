@@ -35,7 +35,7 @@ fun MindsetSection(viewModel: MainViewModel) {
     ) {
         Text(
             "One of these is shown at random on your first unlock each day.",
-            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
         )
         Spacer(Modifier.height(10.dp))
 

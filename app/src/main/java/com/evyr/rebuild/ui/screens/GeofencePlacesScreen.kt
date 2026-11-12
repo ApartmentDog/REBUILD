@@ -144,7 +144,7 @@ fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             if (places.isNotEmpty()) {
                 Text(
                     "Adding place #${places.size + 1} — give it a distinct label (e.g. Work, Gym)",
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                 )
                 Spacer(Modifier.height(4.dp))
             }
@@ -175,7 +175,7 @@ fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     }
                 }
             }) {
-                Text("Fix stale geofences", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                Text("Fix stale geofences", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
             }
             Spacer(Modifier.height(8.dp))
             Button(
@@ -330,7 +330,7 @@ fun GeofencePlacesScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         "You can also drag the pin or circle edge on the map.",
                     fontFamily = TerminalFontFamily,
                     color = NervDim,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
                 com.evyr.rebuild.ui.components.GeofenceMapPicker(
@@ -402,7 +402,7 @@ private fun PlaceRow(
                 Text(place.label.uppercase(), fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 13.sp)
                 Text(
                     "%.4f, %.4f · R=%.0fm".format(place.latitude, place.longitude, place.radiusMeters),
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                 )
             }
             IconButton(onClick = onDelete) {
@@ -411,7 +411,7 @@ private fun PlaceRow(
         }
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("EXIT NUDGE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            Text("EXIT NUDGE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, modifier = Modifier.weight(1f))
             Switch(
                 checked = place.notifyOnDeparture,
                 onCheckedChange = onToggleDeparture,
@@ -419,7 +419,7 @@ private fun PlaceRow(
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("ENTER NUDGE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            Text("ENTER NUDGE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, modifier = Modifier.weight(1f))
             Switch(
                 checked = place.notifyOnArrival,
                 onCheckedChange = onToggleArrival,
@@ -431,7 +431,7 @@ private fun PlaceRow(
             "EDIT CHECKLIST FOR THIS PLACE",
             fontFamily = TerminalFontFamily,
             color = NervOrange,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             modifier = Modifier
                 .clickable { onEditChecklist() }
                 .padding(vertical = 4.dp)
@@ -443,7 +443,7 @@ private fun PlaceRow(
             "RE-REGISTER GEOFENCE",
             fontFamily = TerminalFontFamily,
             color = NervDim,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             modifier = Modifier
                 .clickable { onReregister() }
                 .padding(vertical = 4.dp)
@@ -452,13 +452,13 @@ private fun PlaceRow(
             "ADJUST ON MAP",
             fontFamily = TerminalFontFamily,
             color = NervOrange,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             modifier = Modifier
                 .clickable { onAdjustOnMap() }
                 .padding(vertical = 4.dp)
         )
         reregisterStatus?.let {
-            Text(it, fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 9.sp)
+            Text(it, fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 11.sp)
         }
     }
 }
@@ -495,7 +495,7 @@ private fun PlaceChecklistDialog(
                 Text(
                     "OUT items go on the checklist when you leave this place, IN items when you arrive. " +
                         "NFC items are set separately with their own OUT / IN in NFC Tags.",
-                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                 )
                 Spacer(Modifier.height(8.dp))
                 if (all.isEmpty()) {
@@ -534,7 +534,7 @@ private fun PlaceListToggle(label: String, on: Boolean, onClick: () -> Unit) {
         label,
         fontFamily = TerminalFontFamily,
         color = if (on) androidx.compose.ui.graphics.Color.Black else NervDim,
-        fontSize = 10.sp,
+        fontSize = 11.sp,
         modifier = Modifier
             .background(
                 if (on) NervOrange else androidx.compose.ui.graphics.Color.Transparent,

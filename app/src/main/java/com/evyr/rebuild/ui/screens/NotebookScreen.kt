@@ -168,7 +168,7 @@ private fun NotebookEntryRow(entry: NotebookEntry, fmt: SimpleDateFormat, viewMo
                 text = "ENTRY — ${fmt.format(Date(entry.createdAtEpochMs))}",
                 fontFamily = TerminalFontFamily,
                 color = NervDim,
-                fontSize = 10.sp
+                fontSize = 11.sp
             )
             IconButton(onClick = onDelete, modifier = Modifier.size(20.dp)) {
                 Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = NervDim, modifier = Modifier.size(14.dp))
@@ -190,7 +190,7 @@ private fun NotebookEntryRow(entry: NotebookEntry, fmt: SimpleDateFormat, viewMo
                         "#$tag",
                         fontFamily = TerminalFontFamily,
                         color = NervOrange,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         modifier = Modifier
                             .clickable { viewModel.setNotebookQuery(tag) }
                             .padding(vertical = 2.dp)

@@ -41,7 +41,7 @@ fun BatteryOptimizationField() {
                     "work by default, which silently stops geofence nudges and the weekly backup without any error.",
             fontFamily = TerminalFontFamily,
             color = if (isExempt) NervDim else NervRed,
-            fontSize = 9.sp
+            fontSize = 11.sp
         )
         if (!isExempt) {
             Spacer(Modifier.height(6.dp))

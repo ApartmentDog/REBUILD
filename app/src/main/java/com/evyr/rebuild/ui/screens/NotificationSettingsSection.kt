@@ -59,7 +59,7 @@ fun NotificationPrefsPanel(prefs: com.evyr.rebuild.data.NotificationPrefs, onUpd
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("EVENING NUDGE", fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 12.sp)
-                Text("Only if something is still open.", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                Text("Only if something is still open.", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
             }
             Switch(
                 checked = prefs.eveningNudgeEnabled,
@@ -106,7 +106,7 @@ fun NotificationPrefsPanel(prefs: com.evyr.rebuild.data.NotificationPrefs, onUpd
 private fun HourStepper(label: String, hour: Int?, onChange: (Int) -> Unit) {
     val h = hour ?: 0
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("$label", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+        Text("$label", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
         Spacer(Modifier.width(4.dp))
         IconButton(onClick = { onChange((h + 23) % 24) }, modifier = Modifier.size(24.dp)) {
             Text("−", fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 16.sp)
@@ -164,7 +164,7 @@ private fun ExactAlarmWarning() {
         Text("⚠ REMINDERS MAY RUN LATE", fontFamily = TerminalFontFamily, color = NervRed, fontSize = 12.sp)
         Text(
             "Android is allowed to delay them because \"Alarms & reminders\" is off for this app. Tap to turn it on.",
-            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
         )
     }
     Spacer(Modifier.height(8.dp))

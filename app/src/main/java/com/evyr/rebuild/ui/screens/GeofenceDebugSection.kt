@@ -35,7 +35,7 @@ fun GeofenceDebugSection() {
     ) {
         Text(
             "Last 50 geofence events, newest first. Cross a Home/Work boundary, then come back here and REFRESH.",
-            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
         )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -62,7 +62,7 @@ fun GeofenceDebugSection() {
         if (events.isEmpty()) {
             Text(
                 "No events recorded yet. If this stays empty after crossing a boundary, the OS never called REBUILD at all -- that points at location permission, battery optimization, or Google Play services rather than anything in the app itself.",
-                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
             )
         } else {
             Column(
@@ -76,7 +76,7 @@ fun GeofenceDebugSection() {
                         line,
                         fontFamily = TerminalFontFamily,
                         color = NervGreen,
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }

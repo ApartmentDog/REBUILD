@@ -51,7 +51,7 @@ Flow: `LOCK` (`PinLockScreen`) → `PERMISSIONS` (`PermissionFlowScreen`) → `D
 
 | Screen | File | Notes |
 |---|---|---|
-| Dashboard | `ui/screens/DashboardScreen.kt` | Tabs DAILY / WEEKLY / STANDING / 🔥 HARD / SESSIONS (`selectedZone` 0–4). Private pieces: `HardObjectivesPanel`, `CheckableRow` (📍 place line), `StreakRow`, `ZonePanel`, `VolumeEntryDialog`, `MostMissedPanel`. `+ ADD` in the footer opens the directive form on the current tab's zone; long-pressing a row (`combinedClickable`) opens EDIT / REMINDERS / DELETE. Tap and volume trackers have no long-press. Code-reveal dialog lives here. |
+| Dashboard | `ui/screens/DashboardScreen.kt` | Tabs DAILY / WEEKLY / STANDING / 🔥 HARD / SESSIONS (`selectedZone` 0–4). Private pieces: `HardObjectivesPanel`, `CheckableRow` (📍 place line), `StreakRow`, `ZonePanel`, `VolumeEntryDialog`, `MostMissedPanel`. `+ ADD` in the footer opens the directive form on the current tab's zone; long-pressing a row (`combinedClickable`) opens EDIT / REMINDERS / DELETE. Tap and volume trackers have no long-press. Completion feedback: `acted()` (haptic + arms `syncFlash`, the +N% shown on the sync panel). The trend chart is behind a tap on the sync panel (`showTrend`). Code-reveal dialog lives here. |
 | Settings | `ui/screens/SettingsScreen.kt` | Order: NFC/Locations/Sessions links, directive list (add/edit/delete-confirm), then notifications, identity, backup, mindset, and a collapsed DIAGNOSTICS block (sync + geofence debug) |
 | Directive form | `ui/screens/DirectiveEditComponents.kt` | `DirectiveEditRow`, `DirectiveEditDialog` (zone chips, 🔥 boost, LOCATION, recurrence, weekday, NFC, taps, volume), `AddMindsetLineDialog`, `ReminderManagementDialog` (time/arrival/departure, notification/alarm/calendar) |
 | Settings sections | `NotificationSettingsSection.kt` (`NotificationPrefsPanel`), `BatteryOptimizationSection.kt`, `SyncRatioDebugSection.kt`, `GeofenceDebugSection.kt`, `MindsetSettingsSection.kt` (`MindsetSection`), `BackupSettingsSection.kt` | all in `ui/screens/` |
@@ -67,6 +67,7 @@ Cheat codes (case-insensitive, in `MainActivity`'s dialog):
 ## Theme & components (`ui/theme`, `ui/components`)
 - `ui/theme/Theme.kt`: `Eva*` colors (EvaRed, EvaYellow, EvaPanelBg, EvaTextPrimary/Dim, EvaGreen), `Nerv*` aliases used by settings-style screens, `TerminalFontFamily` (Share Tech Mono), `RebuildTheme`.
 - Components: `EvaPanel` (angled shadow panel), `HazardStripe(height, colorA, colorB)`, `CelOutlineText`, `ConsoleFrame` (beige console housing around the whole app), `HexGridBackground`, `SyncRatioBar`, `MiniLineChart`, `SegmentedTapBar`, `LiquidFillBar`, `VersionFooter` (secret tap), `GeofenceMapPicker`.
+- Text floor is 11sp on every screen except the tarot screens (card art is size-dependent) and `HoardScreen`. Don't add smaller text.
 - Redemption alternate identity: `IconSwitcher.kt` (`LauncherTheme` NERV/REDEMPTION) toggles the two `activity-alias` launchers in `AndroidManifest.xml`. In-app retitling isn't built yet.
 
 ## Location / geofencing (`location/`)

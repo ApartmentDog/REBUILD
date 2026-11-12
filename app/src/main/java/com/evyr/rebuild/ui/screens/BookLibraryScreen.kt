@@ -115,7 +115,7 @@ fun BookLibraryScreen(viewModel: MainViewModel, onBack: () -> Unit, onOpenBook: 
                             } else {
                                 if (book.totalPages > 0) "Chapter ${book.lastPosition + 1} of ${book.totalPages}" else "EPUB"
                             }
-                            Text(progressLabel, fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                            Text(progressLabel, fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                         }
                         IconButton(onClick = {
                             File(book.filePath).delete()

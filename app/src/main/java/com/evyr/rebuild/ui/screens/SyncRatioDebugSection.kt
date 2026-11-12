@@ -51,7 +51,7 @@ fun SyncRatioDebugPanel(viewModel: MainViewModel) {
                 "FINAL: ${b.finalPercent}%"
             )
             lines.forEach {
-                Text(it, fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 10.sp)
+                Text(it, fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 11.sp)
             }
         }
     }

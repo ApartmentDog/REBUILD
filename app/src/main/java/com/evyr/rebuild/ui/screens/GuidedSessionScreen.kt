@@ -251,7 +251,7 @@ private fun StepView(step: SessionStep, stepNumber: Int, totalSteps: Int, viewMo
             )
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = { videoPickerLauncher.launch("video/*") }) {
-                Text("REPLACE REFERENCE VIDEO", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                Text("REPLACE REFERENCE VIDEO", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
             }
         } else {
             OutlinedButton(
@@ -283,13 +283,13 @@ private fun StepView(step: SessionStep, stepNumber: Int, totalSteps: Int, viewMo
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { showUrlEditor = false; urlDraft = step.referenceUrl.orEmpty() }) {
-                    Text("CANCEL", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                    Text("CANCEL", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                 }
                 TextButton(onClick = {
                     viewModel.setSessionStepReferenceUrl(step, urlDraft.trim().ifBlank { null })
                     showUrlEditor = false
                 }) {
-                    Text("SAVE LINK", fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 10.sp)
+                    Text("SAVE LINK", fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 11.sp)
                 }
             }
         } else if (!step.referenceUrl.isNullOrBlank()) {
@@ -312,12 +312,12 @@ private fun StepView(step: SessionStep, stepNumber: Int, totalSteps: Int, viewMo
                     Text("OPEN REFERENCE LINK", fontFamily = TerminalFontFamily, color = NervOrange, fontSize = 11.sp)
                 }
                 TextButton(onClick = { showUrlEditor = true }) {
-                    Text("EDIT", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                    Text("EDIT", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                 }
             }
         } else {
             TextButton(onClick = { showUrlEditor = true }) {
-                Text("ADD REFERENCE LINK", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                Text("ADD REFERENCE LINK", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
             }
         }
 

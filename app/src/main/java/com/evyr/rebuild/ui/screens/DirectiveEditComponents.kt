@@ -64,7 +64,7 @@ fun DirectiveEditRow(
                     } else append(" · ${directive.kind.name}")
                     placeLabel?.let { append(" · 📍 $it") }
                 },
-                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp
+                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
             )
         }
         IconButton(onClick = onReminders) {
@@ -191,7 +191,7 @@ fun DirectiveEditDialog(
                     colors = rebuildTextFieldColors()
                 )
                 Spacer(Modifier.height(12.dp))
-                Text("ZONE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                Text("ZONE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     Zone.values().forEach { z ->
                         FilterChip(
@@ -200,7 +200,7 @@ fun DirectiveEditDialog(
                             label = {
                                 Text(
                                     if (z == Zone.HARD) "🔥" else z.name.take(3),
-                                    fontFamily = TerminalFontFamily, fontSize = 10.sp
+                                    fontFamily = TerminalFontFamily, fontSize = 11.sp
                                 )
                             },
                             modifier = Modifier.padding(end = 4.dp)
@@ -212,10 +212,10 @@ fun DirectiveEditDialog(
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "One-time. Clear it once and it's done for good -- no reset, no recurrence.",
-                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                     )
                     Spacer(Modifier.height(8.dp))
-                    Text("SYNC BOOST", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text("SYNC BOOST", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(5, 10, 20, 30).forEach { b ->
@@ -224,7 +224,7 @@ fun DirectiveEditDialog(
                                 "+$b%",
                                 fontFamily = TerminalFontFamily,
                                 color = if (selected) NervBackground else NervGreen,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 modifier = Modifier
                                     .background(if (selected) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                     .clickable { hardBoost = b }
@@ -234,18 +234,18 @@ fun DirectiveEditDialog(
                     }
                     Text(
                         "Added on top of your Sync Ratio when cleared -- can push it past 100. Fades out over a week.",
-                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                     )
                 }
 
                 if (placeable) {
                     Spacer(Modifier.height(12.dp))
-                    Text("LOCATION", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text("LOCATION", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     if (places.isEmpty()) {
                         Text(
                             "No places saved yet -- add one under Settings > Locations to tie objectives to it.",
-                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                         )
                     } else {
                         Row(
@@ -258,7 +258,7 @@ fun DirectiveEditDialog(
                                     p?.label?.uppercase()?.let { "📍 $it" } ?: "ANYWHERE",
                                     fontFamily = TerminalFontFamily,
                                     color = if (selected) NervBackground else NervGreen,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     modifier = Modifier
                                         .background(if (selected) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                         .clickable { placeId = p?.id }
@@ -268,7 +268,7 @@ fun DirectiveEditDialog(
                         }
                         Text(
                             "Shows with its place, jumps to the top while you're there, and is on that place's arrival nudge.",
-                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                         )
                     }
                 }
@@ -277,7 +277,7 @@ fun DirectiveEditDialog(
                 // display-only items have no checkbox to disable.
                 if (checkable) {
                     Spacer(Modifier.height(12.dp))
-                    Text("RECURRENCE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text("RECURRENCE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(
@@ -291,7 +291,7 @@ fun DirectiveEditDialog(
                                 label,
                                 fontFamily = TerminalFontFamily,
                                 color = if (selected) NervBackground else NervGreen,
-                                fontSize = 9.sp,
+                                fontSize = 11.sp,
                                 modifier = Modifier
                                     .background(if (selected) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                     .clickable { recurrenceType = type }
@@ -309,7 +309,7 @@ fun DirectiveEditDialog(
                                         label,
                                         fontFamily = TerminalFontFamily,
                                         color = if (on) NervBackground else NervGreen,
-                                        fontSize = 9.sp,
+                                        fontSize = 11.sp,
                                         modifier = Modifier
                                             .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(4.dp))
                                             .clickable {
@@ -330,7 +330,7 @@ fun DirectiveEditDialog(
                             )
                             Text(
                                 "Counted from when you last completed it, not a fixed calendar date.",
-                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                             )
                         }
                         RecurrenceType.MONTHLY -> {
@@ -343,7 +343,7 @@ fun DirectiveEditDialog(
                             )
                             Text(
                                 "Shorter months clamp to their last day instead of skipping — set to 31 and it fires on the 28th/29th/30th when there's no 31st.",
-                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                             )
                         }
                         RecurrenceType.NONE -> {
@@ -351,7 +351,7 @@ fun DirectiveEditDialog(
                             if (zone == Zone.DAILY) {
                                 Text(
                                     "Every day (default for Daily).",
-                                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                                 )
                             } else {
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -361,7 +361,7 @@ fun DirectiveEditDialog(
                                             label,
                                             fontFamily = TerminalFontFamily,
                                             color = if (on) NervBackground else NervGreen,
-                                            fontSize = 9.sp,
+                                            fontSize = 11.sp,
                                             modifier = Modifier
                                                 .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(4.dp))
                                                 .clickable { weekday = dayNum }
@@ -374,7 +374,7 @@ fun DirectiveEditDialog(
                                     else "Due once a week on this day.",
                                     fontFamily = TerminalFontFamily,
                                     color = if (weekday == null) NervRed else NervDim,
-                                    fontSize = 9.sp
+                                    fontSize = 11.sp
                                 )
                             }
                         }
@@ -391,7 +391,7 @@ fun DirectiveEditDialog(
                             Text("NFC TAP ONLY", fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 12.sp)
                             Text(
                                 "Checkbox is disabled — only a tag scan completes it",
-                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                             )
                         }
                     }
@@ -412,7 +412,7 @@ fun DirectiveEditDialog(
                     Text(
                         "1 completes on a single tap/scan. Higher counts show as a segmented bar above the checklist " +
                             "-- tap it directly, or scan an NFC tag if one's linked. Doesn't need NFC on.",
-                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                     )
 
                     Spacer(Modifier.height(8.dp))
@@ -431,7 +431,7 @@ fun DirectiveEditDialog(
                         )
                         Text(
                             "Shows as a single fill bar. Tap it to type in an amount as you drink -- fills toward this target instead of counting taps.",
-                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                         )
                     }
 
@@ -442,7 +442,7 @@ fun DirectiveEditDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "REMIND ME", fontFamily = TerminalFontFamily, color = NervDim,
-                            fontSize = 9.sp, letterSpacing = 1.sp, modifier = Modifier.weight(1f)
+                            fontSize = 11.sp, letterSpacing = 1.sp, modifier = Modifier.weight(1f)
                         )
                         Switch(
                             checked = remindOn,
@@ -454,7 +454,7 @@ fun DirectiveEditDialog(
                         ReminderTimeField(remindHour, remindMinute) { h, m -> remindHour = h; remindMinute = m }
                         Text(
                             "Every day at this time. Tone, repeat-until-done and place options are under the bell afterwards.",
-                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                         )
                     }
                 }
@@ -726,11 +726,11 @@ fun ReminderManagementDialog(
                                         }
                                         if (r.renagMinutes > 0) append("  ↻${r.renagMinutes}M")
                                     },
-                                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 8.sp, letterSpacing = 1.sp
+                                    fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp
                                 )
                             }
                             if (!r.customMessage.isNullOrBlank()) {
-                                Text(r.customMessage, fontFamily = TerminalFontFamily, color = NervDim, fontSize = 10.sp)
+                                Text(r.customMessage, fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                             }
                         }
                         Switch(
@@ -760,7 +760,7 @@ fun ReminderManagementDialog(
                 Spacer(Modifier.height(8.dp))
 
                 if (showAddForm) {
-                    Text("TIME", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text("TIME", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     ReminderTimeField(hour, minute) { h, m -> hour = h; minute = m }
                     Spacer(Modifier.height(10.dp))
@@ -772,7 +772,7 @@ fun ReminderManagementDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(10.dp))
-                    Text("TYPE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text("TYPE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         // A calendar event needs a time. "When I arrive somewhere"
@@ -789,7 +789,7 @@ fun ReminderManagementDialog(
                                 label,
                                 fontFamily = TerminalFontFamily,
                                 color = if (selected) NervBackground else NervGreen,
-                                fontSize = 9.sp,
+                                fontSize = 11.sp,
                                 modifier = Modifier
                                     .background(if (selected) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                     .clickable { reminderType = type }
@@ -799,7 +799,7 @@ fun ReminderManagementDialog(
                     }
                     if (reminderType == com.evyr.rebuild.data.ReminderType.CALENDAR) {
                         Spacer(Modifier.height(10.dp))
-                        Text("CALENDAR REPEAT", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Text("CALENDAR REPEAT", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                         Spacer(Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(
@@ -812,7 +812,7 @@ fun ReminderManagementDialog(
                                     label,
                                     fontFamily = TerminalFontFamily,
                                     color = if (selected) NervBackground else NervGreen,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     modifier = Modifier
                                         .background(if (selected) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                         .clickable { calRecurrence = type }
@@ -831,7 +831,7 @@ fun ReminderManagementDialog(
                                             label,
                                             fontFamily = TerminalFontFamily,
                                             color = if (on) NervBackground else NervGreen,
-                                            fontSize = 9.sp,
+                                            fontSize = 11.sp,
                                             modifier = Modifier
                                                 .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(4.dp))
                                                 .clickable {
@@ -856,12 +856,12 @@ fun ReminderManagementDialog(
                     }
                     if (reminderType != com.evyr.rebuild.data.ReminderType.CALENDAR) {
                         Spacer(Modifier.height(10.dp))
-                        Text("TONE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Text("TONE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 "♪ ${toneLabel.uppercase()}",
-                                fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 10.sp,
+                                fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 11.sp,
                                 modifier = Modifier
                                     .weight(1f, fill = false)
                                     .background(NervPanelBorder, RoundedCornerShape(6.dp))
@@ -888,20 +888,20 @@ fun ReminderManagementDialog(
                             )
                             if (soundUri != null) {
                                 Text(
-                                    "RESET", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp,
+                                    "RESET", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp,
                                     modifier = Modifier.clickable { soundUri = null }.padding(6.dp)
                                 )
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("VIBRATE", fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                            Text("VIBRATE", fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 11.sp, modifier = Modifier.weight(1f))
                             Switch(
                                 checked = vibrate,
                                 onCheckedChange = { vibrate = it },
                                 colors = SwitchDefaults.colors(checkedTrackColor = NervOrange)
                             )
                         }
-                        Text("IF IT'S STILL NOT DONE, AGAIN EVERY", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Text("IF IT'S STILL NOT DONE, AGAIN EVERY", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                         Spacer(Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(0 to "OFF", 5 to "5M", 15 to "15M", 30 to "30M", 60 to "1H").forEach { (mins, label) ->
@@ -910,7 +910,7 @@ fun ReminderManagementDialog(
                                     label,
                                     fontFamily = TerminalFontFamily,
                                     color = if (on) NervBackground else NervGreen,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     modifier = Modifier
                                         .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                         .clickable { renagMinutes = mins }
@@ -921,13 +921,13 @@ fun ReminderManagementDialog(
                         if (renagMinutes > 0) {
                             Text(
                                 "Up to 3 more times. Stops as soon as it's done.",
-                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                             )
                         }
                     }
 
                     Spacer(Modifier.height(10.dp))
-                    Text("FIRES", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text("FIRES", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(
@@ -940,7 +940,7 @@ fun ReminderManagementDialog(
                                 label,
                                 fontFamily = TerminalFontFamily,
                                 color = if (on) NervBackground else NervGreen,
-                                fontSize = 9.sp,
+                                fontSize = 11.sp,
                                 modifier = Modifier
                                     .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                     .clickable {
@@ -964,12 +964,12 @@ fun ReminderManagementDialog(
                         placeCondition != com.evyr.rebuild.data.PlaceCondition.ANYWHERE
                     if (needsPlace) {
                         Spacer(Modifier.height(10.dp))
-                        Text("PLACE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Text("PLACE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                         Spacer(Modifier.height(4.dp))
                         if (places.isEmpty()) {
                             Text(
                                 "No places saved yet — add one in Settings > Locations first.",
-                                fontFamily = TerminalFontFamily, color = NervRed, fontSize = 9.sp
+                                fontFamily = TerminalFontFamily, color = NervRed, fontSize = 11.sp
                             )
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -979,7 +979,7 @@ fun ReminderManagementDialog(
                                         place.label.uppercase(),
                                         fontFamily = TerminalFontFamily,
                                         color = if (on) NervBackground else NervGreen,
-                                        fontSize = 9.sp,
+                                        fontSize = 11.sp,
                                         modifier = Modifier
                                             .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                             .clickable { selectedPlaceId = place.id }
@@ -992,7 +992,7 @@ fun ReminderManagementDialog(
 
                     if (triggerType == com.evyr.rebuild.data.ReminderTrigger.TIME) {
                         Spacer(Modifier.height(10.dp))
-                        Text("ONLY WHEN", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Text("ONLY WHEN", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                         Spacer(Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(
@@ -1005,7 +1005,7 @@ fun ReminderManagementDialog(
                                     label,
                                     fontFamily = TerminalFontFamily,
                                     color = if (on) NervBackground else NervGreen,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     modifier = Modifier
                                         .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                                         .clickable { placeCondition = c }
@@ -1016,7 +1016,7 @@ fun ReminderManagementDialog(
                     }
 
                     Spacer(Modifier.height(10.dp))
-                    Text("DAYS", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text("DAYS", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf(1 to "S", 2 to "M", 3 to "T", 4 to "W", 5 to "T", 6 to "F", 7 to "S")
@@ -1026,7 +1026,7 @@ fun ReminderManagementDialog(
                                     label,
                                     fontFamily = TerminalFontFamily,
                                     color = if (on) NervBackground else NervGreen,
-                                    fontSize = 10.sp,
+                                    fontSize = 11.sp,
                                     modifier = Modifier
                                         .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(4.dp))
                                         .clickable {
@@ -1039,7 +1039,7 @@ fun ReminderManagementDialog(
                     Text(
                         if (selectedDays.isEmpty()) "None picked = every day."
                         else "Only on the selected days.",
-                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
                     )
 
                     Spacer(Modifier.height(10.dp))
@@ -1143,7 +1143,7 @@ private fun ReminderTimeField(hour: Int, minute: Int, onPick: (Int, Int) -> Unit
                 label,
                 fontFamily = TerminalFontFamily,
                 color = if (on) NervBackground else NervGreen,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 modifier = Modifier
                     .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
                     .clickable { onPick(h, 0) }

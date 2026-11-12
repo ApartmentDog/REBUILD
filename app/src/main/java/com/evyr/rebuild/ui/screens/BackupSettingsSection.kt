@@ -89,7 +89,7 @@ fun BackupField(viewModel: MainViewModel) {
         Text(
             "Runs Tuesdays at 12:01 AM. Includes everything: all data plus notebook photos/videos and session clips. " +
                 "The API key and PIN can't be included — they're tied to this device's keystore, so re-enter them after a restore.",
-            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
         )
 
         Spacer(Modifier.height(10.dp))
@@ -97,7 +97,7 @@ fun BackupField(viewModel: MainViewModel) {
             "FOLDER: ${folderLabel ?: "not set — weekly backup won't run"}",
             fontFamily = TerminalFontFamily,
             color = if (folderLabel == null) NervRed else NervGreen,
-            fontSize = 10.sp
+            fontSize = 11.sp
         )
         Text(
             "CHOOSE FOLDER",
@@ -113,7 +113,7 @@ fun BackupField(viewModel: MainViewModel) {
             Spacer(Modifier.height(6.dp))
             Text(
                 "LAST: ${fmt.format(java.util.Date(lastAt))} · ${lastStatus ?: ""}",
-                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 9.sp
+                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
             )
         }
 
@@ -141,7 +141,7 @@ fun BackupField(viewModel: MainViewModel) {
 
         message?.let {
             Spacer(Modifier.height(8.dp))
-            Text(it, fontFamily = TerminalFontFamily, color = if (isError) NervRed else NervGreen, fontSize = 10.sp)
+            Text(it, fontFamily = TerminalFontFamily, color = if (isError) NervRed else NervGreen, fontSize = 11.sp)
         }
     }
 
