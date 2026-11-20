@@ -22,6 +22,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MediaAttachment::class,
         NotificationPrefs::class,
         StreakBreak::class,
+        MissEntry::class,
+        Routine::class,
+        UrgeEntry::class,
+        Anomaly::class,
         DailyScanProgress::class,
         HiddenMediaItem::class,
         GeofencePlaceDirective::class,
@@ -31,7 +35,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ConfessionEntry::class,
         DailyVolumeProgress::class
     ],
-    version = 25,
+    version = 26,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -56,6 +60,10 @@ abstract class RebuildDatabase : RoomDatabase() {
     abstract fun tarotPullDao(): TarotPullDao
     abstract fun bookDao(): BookDao
     abstract fun confessionEntryDao(): ConfessionEntryDao
+    abstract fun missDao(): MissDao
+    abstract fun routineDao(): RoutineDao
+    abstract fun urgeDao(): UrgeDao
+    abstract fun anomalyDao(): AnomalyDao
 
     companion object {
         @Volatile private var INSTANCE: RebuildDatabase? = null
@@ -422,6 +430,66 @@ abstract class RebuildDatabase : RoomDatabase() {
             }
         }
 
+        /** Habit design: cue, minimum version, focus/graduation, coping plans,
+         *  never-miss-twice slips, plus the miss log, routines, urge log and
+         *  anomalies. All additive. */
+        private val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE directives ADD COLUMN anchor TEXT")
+                db.execSQL("ALTER TABLE directives ADD COLUMN minimumVersion TEXT")
+                db.execSQL("ALTER TABLE directives ADD COLUMN focus INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE directives ADD COLUMN focusSinceEpochMs INTEGER")
+                db.execSQL("ALTER TABLE directives ADD COLUMN graduatedEpochMs INTEGER")
+                db.execSQL("ALTER TABLE directives ADD COLUMN copingReason TEXT")
+                db.execSQL("ALTER TABLE directives ADD COLUMN copingPlan TEXT")
+                db.execSQL("ALTER TABLE streaks ADD COLUMN lastSlipDate TEXT")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS miss_log (
+                        directiveId INTEGER NOT NULL,
+                        date TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        loggedAtEpochMs INTEGER NOT NULL,
+                        PRIMARY KEY(directiveId, date)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS routines (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        directiveIds TEXT NOT NULL,
+                        sortOrder INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS urge_log (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        directiveId INTEGER NOT NULL,
+                        startedAtEpochMs INTEGER NOT NULL,
+                        outcome TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS anomalies (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        date TEXT NOT NULL,
+                        text TEXT NOT NULL,
+                        spawnedAtEpochMs INTEGER NOT NULL,
+                        expiresAtEpochMs INTEGER NOT NULL,
+                        clearedAtEpochMs INTEGER,
+                        boost INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): RebuildDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -429,7 +497,7 @@ abstract class RebuildDatabase : RoomDatabase() {
                     RebuildDatabase::class.java,
                     "rebuild.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
                     .build().also { INSTANCE = it }
             }
         }

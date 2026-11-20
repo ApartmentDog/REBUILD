@@ -73,7 +73,7 @@ class AppRepository(private val db: RebuildDatabase) {
         return when (directive.recurrenceType) {
             RecurrenceType.NONE -> {
                 if (directive.zone == Zone.DAILY) true
-                else directive.weekday == now.get(Calendar.DAY_OF_WEEK)
+                else weeklyOverdueDays(directive, now) != null
             }
             RecurrenceType.SPECIFIC_DAYS -> {
                 val days = directive.recurrenceDays?.split(",")?.mapNotNull { it.toIntOrNull() } ?: emptyList()
@@ -103,6 +103,26 @@ class AppRepository(private val db: RebuildDatabase) {
             }
         }
     }
+
+    /**
+     * For a single-day Weekly directive: days since this week's occurrence
+     * came due (0 = due today), or null when it isn't open. A missed Weekly
+     * item used to vanish until the same weekday came round again; now it
+     * stays listed, overdue, until it's done. Done today keeps it listed (as
+     * done) so it doesn't disappear the moment it's ticked.
+     */
+    fun weeklyOverdueDays(d: Directive, now: Calendar = Calendar.getInstance()): Int? {
+        val wd = d.weekday ?: return null
+        val back = (now.get(Calendar.DAY_OF_WEEK) - wd + 7) % 7
+        if (back == 0) return 0
+        val last = d.lastCompletedEpochMs ?: return back
+        val sinceDone = calendarDaysBetween(last, now)
+        if (sinceDone == 0) return back
+        return if (sinceDone <= back) null else back
+    }
+
+    private fun isSingleDayWeekly(d: Directive) =
+        d.zone == Zone.WEEKLY && d.recurrenceType == RecurrenceType.NONE && d.weekday != null
 
     // ---------- Seeding ----------
 
@@ -152,6 +172,8 @@ class AppRepository(private val db: RebuildDatabase) {
         // but the place checklist and streak rows would sit there forever.
         db.geofencePlaceDirectiveDao().clearForDirective(directive.id)
         db.streakDao().deleteFor(directive.id)
+        db.missDao().clearAllFor(directive.id)
+        db.urgeDao().clearAllFor(directive.id)
         db.directiveDao().delete(directive)
         return reminders
     }
@@ -164,6 +186,8 @@ class AppRepository(private val db: RebuildDatabase) {
         observeTodayKey().flatMapLatest { db.completionDao().observeForDate(it) }
 
     suspend fun markComplete(directiveId: Long, source: String = "manual") {
+        // Done after all: a reason logged earlier today no longer applies.
+        db.missDao().clear(directiveId, todayKey())
         db.completionDao().upsert(
             Completion(
                 directiveId = directiveId,
@@ -239,44 +263,65 @@ class AppRepository(private val db: RebuildDatabase) {
         val today = todayKey()
         // Once a day. HOLD could be tapped repeatedly before, adding a day each time.
         if (existing.lastHeldDate == today) return
+        // A day you've logged a slip on can't also be held.
+        if (existing.lastSlipDate == today) return
         val updated = existing.copy(
             currentStreakDays = existing.currentStreakDays + 1,
             bestStreakDays = maxOf(existing.bestStreakDays, existing.currentStreakDays + 1),
             lastHeldDate = today
         )
         db.streakDao().upsert(updated)
+        // Held days are also logged as completions (source "hold"), so clean
+        // days over a window can be counted -- the streak row alone only
+        // knows the current run.
+        db.completionDao().upsert(Completion(directiveId, today, System.currentTimeMillis(), source = "hold"))
     }
 
-    suspend fun breakStreak(directiveId: Long, note: String?) {
+    enum class SlipOutcome { KEPT, RESET, ALREADY }
+
+    /**
+     * Logs a slip on a standing goal. Never miss twice: a single slip is
+     * recorded (and shows on the row) but the count stands; a slip on the day
+     * right after another slip resets it. Resetting to zero after one lapse is
+     * what feeds "already blew it, might as well" -- the abstinence violation
+     * effect -- so one bad day no longer erases a long run.
+     *
+     * Slipping after holding the same day takes that day's hold back.
+     */
+    suspend fun breakStreak(directiveId: Long, note: String?): SlipOutcome {
         val existing = db.streakDao().get(directiveId) ?: Streak(directiveId = directiveId)
-        // Also append to streak_breaks: Streak only keeps the most recent break
-        // (it's overwritten each time), so without this there's no history to
-        // find a pattern in.
-        db.streakBreakDao().insert(
-            StreakBreak(
-                directiveId = directiveId,
-                brokenAtEpochMs = System.currentTimeMillis(),
-                note = note
-            )
-        )
-        db.streakDao().upsert(
-            existing.copy(
-                currentStreakDays = 0,
-                lastBrokenEpochMs = System.currentTimeMillis(),
-                lastBrokenNote = note,
-                lastHeldDate = null
-            )
-        )
+        val now = System.currentTimeMillis()
+        val today = todayKey()
+        // Every slip goes in the history, which the weekday-pattern line reads.
+        db.streakBreakDao().insert(StreakBreak(directiveId = directiveId, brokenAtEpochMs = now, note = note))
         if (note != null) {
             db.notebookDao().insert(
-                NotebookEntry(
-                    text = "Streak broken: $note",
-                    createdAtEpochMs = System.currentTimeMillis(),
-                    linkedDirectiveId = directiveId
-                )
+                NotebookEntry(text = "Slip: $note", createdAtEpochMs = now, linkedDirectiveId = directiveId)
             )
         }
+        if (existing.lastSlipDate == today) return SlipOutcome.ALREADY
+
+        var days = existing.currentStreakDays
+        if (existing.lastHeldDate == today) {
+            db.completionDao().clear(directiveId, today)
+            days = (days - 1).coerceAtLeast(0)
+        }
+        val reset = existing.lastSlipDate == dayKeyOffset(-1) || days == 0
+        db.streakDao().upsert(
+            existing.copy(
+                currentStreakDays = if (reset) 0 else days,
+                lastHeldDate = null,
+                lastSlipDate = today,
+                lastBrokenEpochMs = if (reset) now else existing.lastBrokenEpochMs,
+                lastBrokenNote = if (reset) note else existing.lastBrokenNote
+            )
+        )
+        return if (reset) SlipOutcome.RESET else SlipOutcome.KEPT
     }
+
+    /** yyyy-MM-dd for today plus [offset] days. */
+    fun dayKeyOffset(offset: Int): String =
+        dateKey(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, offset) }.time)
 
     fun observeStreaks(): Flow<List<Streak>> = db.streakDao().observeAll()
 
@@ -567,38 +612,119 @@ class AppRepository(private val db: RebuildDatabase) {
         }
     }
 
-    // ---------- Most missed ----------
+    // ---------- Habit stats ----------
 
-    data class MissStat(val directive: Directive, val missed: Int, val due: Int)
+    /** One day's state for a directive, oldest to newest on the row's bar. */
+    enum class DayMark { DONE, MIN, MISSED, OFF, OPEN }
+
+    data class DirectiveStats(
+        val cells: List<DayMark>,      // last STAT_DAYS days, oldest first, today last
+        val done30: Int,               // past 30 days, today excluded (it isn't over)
+        val due30: Int,
+        val lifetime: Int,             // every completion ever, never goes down
+        val daysTracked: Int,          // since the first completion; 0 if never done
+        val missedYesterday: Boolean,  // daily/weekly missed, or standing slipped
+        val topMissReason: String?,    // most common logged reason, last 30 days
+        val topMissReasonCount: Int,
+        val overdueDays: Int?          // single-day weekly: days past its due day
+    ) {
+        val consistency30: Float? get() = if (due30 == 0) null else done30.toFloat() / due30
+    }
 
     /**
-     * The directives missed most over the last [lookbackDays] (not counting
-     * today, which isn't over). Derived from the completions table, so it
-     * covers history from before this existed. Bounded at each directive's
-     * first completion, same as mostMissedWeekdayFor: days before it was ever
-     * done aren't failures. Needs 2+ misses to be listed.
+     * Per-directive history for the rows, Most Missed, graduation and the
+     * earned unlock -- one pass, one set of rules. Days before a directive's
+     * first completion aren't counted against it (it wasn't being tracked).
+     * Single-day weekly items are judged per occurrence: done any time in the
+     * 7 days from their due day counts, and the current week's occurrence is
+     * OPEN, not MISSED, until the week is out.
      */
-    suspend fun mostMissed(lookbackDays: Int = 30, limit: Int = 3): List<MissStat> {
-        val datesByDirective = db.completionDao().getAll().groupBy({ it.directiveId }, { it.date })
-        val today = Calendar.getInstance()
-        return db.directiveDao().getAll()
-            .filter { (it.zone == Zone.DAILY || it.zone == Zone.WEEKLY) && !it.locked }
-            .mapNotNull { d ->
-                val dates = datesByDirective[d.id]?.toSortedSet() ?: return@mapNotNull null
-                val earliest = dates.first()
-                var missed = 0
-                var due = 0
-                for (i in 1..lookbackDays) {
-                    val day = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -i) }
-                    val key = dateKey(day.time)
-                    if (key < earliest) break
-                    if (key in dates) { due++; continue }
-                    if (wasDueOn(d, day, key, dates)) { due++; missed++ }
-                }
-                if (missed < 2) null else MissStat(d, missed, due)
+    suspend fun computeStats(): Map<Long, DirectiveStats> {
+        val now = Calendar.getInstance()
+        val window = 30
+        val completions = db.completionDao().getSince(dayKeyOffset(-(window + 7)))
+        val byDir = completions.groupBy { it.directiveId }.mapValues { e -> e.value.associateBy { it.date } }
+        val lifetime = db.completionDao().countsByDirective().associate { it.directiveId to it.n }
+        val firsts = db.completionDao().firstDates().associate { it.directiveId to it.first }
+        val slips = db.streakBreakDao().getAll().groupBy({ it.directiveId }, { dateKey(Date(it.brokenAtEpochMs)) })
+            .mapValues { it.value.toSet() }
+        val misses = db.missDao().getSince(dayKeyOffset(-window)).groupBy { it.directiveId }
+
+        val days = (0..window).map { i ->
+            val c = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -i) }
+            c to dateKey(c.time)
+        }
+        val today = days[0].second
+
+        return db.directiveDao().getAll().associate { d ->
+            val done = byDir[d.id] ?: emptyMap()
+            val first = firsts[d.id]
+            val dates = done.keys.toSortedSet()
+            val marks = days.mapIndexed { i, (cal, key) ->
+                markFor(d, i, cal, key, today, done, first, dates, slips[d.id] ?: emptySet())
             }
-            .sortedWith(compareByDescending<MissStat> { it.missed }.thenBy { it.directive.sortOrder })
-            .take(limit)
+            val past = marks.drop(1)
+            val reasons = misses[d.id].orEmpty().groupingBy { it.reason }.eachCount()
+            val top = reasons.maxByOrNull { it.value }
+            d.id to DirectiveStats(
+                cells = marks.take(STAT_DAYS).reversed(),
+                done30 = past.count { it == DayMark.DONE || it == DayMark.MIN },
+                due30 = past.count { it == DayMark.DONE || it == DayMark.MIN || it == DayMark.MISSED },
+                lifetime = lifetime[d.id] ?: 0,
+                daysTracked = first?.let { f ->
+                    dateFmt.get()!!.parse(f)?.time?.let { calendarDaysBetween(it, now) + 1 }
+                } ?: 0,
+                missedYesterday = marks[1] == DayMark.MISSED,
+                topMissReason = top?.key,
+                topMissReasonCount = top?.value ?: 0,
+                overdueDays = if (isSingleDayWeekly(d) && done[today] == null)
+                    weeklyOverdueDays(d, now)?.takeIf { it > 0 } else null
+            )
+        }
+    }
+
+    private fun markFor(
+        d: Directive, i: Int, cal: Calendar, key: String, today: String,
+        done: Map<String, Completion>, first: String?, dates: java.util.SortedSet<String>,
+        slipDays: Set<String>
+    ): DayMark = when (d.zone) {
+        Zone.STANDING -> when {
+            done[key]?.source == "hold" -> DayMark.DONE
+            key in slipDays -> DayMark.MISSED
+            i == 0 -> DayMark.OPEN
+            else -> DayMark.OFF
+        }
+        Zone.DAILY, Zone.WEEKLY -> when {
+            d.locked -> DayMark.OFF
+            isSingleDayWeekly(d) -> {
+                if (cal.get(Calendar.DAY_OF_WEEK) != d.weekday) DayMark.OFF
+                else {
+                    // Done on the day, or late within its week.
+                    val hit = (0..6).asSequence()
+                        .map { k -> dateKey((cal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, k) }.time) }
+                        .takeWhile { it <= today }
+                        .mapNotNull { done[it] }
+                        .firstOrNull()
+                    when {
+                        hit != null -> if (hit.source == "min") DayMark.MIN else DayMark.DONE
+                        first == null || key < first -> DayMark.OFF
+                        i <= 6 -> DayMark.OPEN
+                        else -> DayMark.MISSED
+                    }
+                }
+            }
+            else -> {
+                val c = done[key]
+                when {
+                    c != null -> if (c.source == "min") DayMark.MIN else DayMark.DONE
+                    first == null || key < first -> DayMark.OFF
+                    !wasDueOn(d, cal, key, dates) -> DayMark.OFF
+                    i == 0 -> DayMark.OPEN
+                    else -> DayMark.MISSED
+                }
+            }
+        }
+        else -> DayMark.OFF
     }
 
     /** isDueToday for a past day. Every-N-days can't use lastCompletedEpochMs
@@ -610,6 +736,136 @@ class AppRepository(private val db: RebuildDatabase) {
         val prev = dates.headSet(key).lastOrNull() ?: return false
         val prevMs = dateFmt.get()!!.parse(prev)?.time ?: return false
         return calendarDaysBetween(prevMs, day) == interval
+    }
+
+    // ---------- Most missed ----------
+
+    data class MissStat(val directive: Directive, val missed: Int, val due: Int, val topReason: String? = null)
+
+    /** The directives missed most over the last 30 days (today excluded), from
+     *  computeStats. Needs 2+ misses to be listed. */
+    suspend fun mostMissed(limit: Int = 3): List<MissStat> {
+        val stats = computeStats()
+        return db.directiveDao().getAll()
+            .filter { (it.zone == Zone.DAILY || it.zone == Zone.WEEKLY) && !it.locked }
+            .mapNotNull { d ->
+                val st = stats[d.id] ?: return@mapNotNull null
+                val missed = st.due30 - st.done30
+                if (missed < 2) null else MissStat(d, missed, st.due30, st.topMissReason)
+            }
+            .sortedWith(compareByDescending<MissStat> { it.missed }.thenBy { it.directive.sortOrder })
+            .take(limit)
+    }
+
+    // ---------- Misses, coping plans, focus ----------
+
+    suspend fun recordMiss(directiveId: Long, reason: String) {
+        db.missDao().upsert(MissEntry(directiveId, todayKey(), reason, System.currentTimeMillis()))
+    }
+
+    suspend fun clearMissToday(directiveId: Long) = db.missDao().clear(directiveId, todayKey())
+
+    fun observeMissesToday(): Flow<List<MissEntry>> =
+        observeTodayKey().flatMapLatest { db.missDao().observeForDate(it) }
+
+    /** Directives where the same reason has won COPING_TRIGGER+ times in 30 days
+     *  and there's no plan for that reason yet. */
+    suspend fun copingCandidates(): List<Pair<Directive, String>> {
+        val stats = computeStats()
+        return db.directiveDao().getAll().mapNotNull { d ->
+            val st = stats[d.id] ?: return@mapNotNull null
+            val reason = st.topMissReason ?: return@mapNotNull null
+            if (st.topMissReasonCount < COPING_TRIGGER) return@mapNotNull null
+            if (d.copingReason == reason && !d.copingPlan.isNullOrBlank()) return@mapNotNull null
+            d to reason
+        }
+    }
+
+    suspend fun setCopingPlan(directiveId: Long, reason: String, plan: String) {
+        val d = db.directiveDao().getById(directiveId) ?: return
+        db.directiveDao().upsert(d.copy(copingReason = reason, copingPlan = plan.trim().ifBlank { null }))
+    }
+
+    /** Turns focus on or off. Returns false (and changes nothing) when turning
+     *  it on would go past MAX_FOCUS. */
+    suspend fun setFocus(directiveId: Long, on: Boolean): Boolean {
+        val d = db.directiveDao().getById(directiveId) ?: return false
+        if (on && !d.focus && db.directiveDao().getAll().count { it.focus } >= MAX_FOCUS) return false
+        db.directiveDao().upsert(
+            d.copy(focus = on, focusSinceEpochMs = if (on) (d.focusSinceEpochMs ?: System.currentTimeMillis()) else null)
+        )
+        return true
+    }
+
+    /** Median time of day this directive gets done, as minutes after
+     *  midnight, from its last 30 timed completions. Null under 5. */
+    suspend fun typicalCompletionMinute(directiveId: Long): Int? {
+        val times = db.completionDao().recentTimed(directiveId, 30)
+            .filter { it.source != "reminder" }
+            .map { c -> Calendar.getInstance().apply { timeInMillis = c.completedAtEpochMs }
+                .let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) } }
+            .sorted()
+        if (times.size < 5) return null
+        return times[times.size / 2]
+    }
+
+    // ---------- Milestones ----------
+
+    data class Milestone(val kind: String, val title: String, val detail: String) {
+        companion object {
+            const val GRADUATED = "GRADUATED"
+            const val UNLOCKED = "UNLOCKED"
+        }
+    }
+
+    /**
+     * Graduations and earned unlocks, applied and returned so the UI can mark
+     * the moment. Graduation: a habit counts as automatic after
+     * GRADUATE_DAYS (Lally et al.'s median time to automaticity was 66 days)
+     * at GRADUATE_RATE or better over the last 30. Standing goals graduate at
+     * a GRADUATE_DAYS run. Fry Scream unlocks itself once Voice Protocol has
+     * been done in full on UNLOCK_NEEDED of the last STAT_DAYS days.
+     */
+    suspend fun checkMilestones(): List<Milestone> {
+        val stats = computeStats()
+        val all = db.directiveDao().getAll()
+        val streaks = db.streakDao().observeAll().first().associateBy { it.directiveId }
+        val now = System.currentTimeMillis()
+        val out = mutableListOf<Milestone>()
+        for (d in all) {
+            if (d.graduatedEpochMs != null || d.locked) continue
+            val st = stats[d.id] ?: continue
+            val detail: String? = when (d.zone) {
+                Zone.DAILY, Zone.WEEKLY -> {
+                    val minDue = if (d.zone == Zone.WEEKLY) 4 else 15
+                    if (st.daysTracked >= GRADUATE_DAYS && st.due30 >= minDue &&
+                        st.done30 >= GRADUATE_RATE * st.due30
+                    ) "${st.daysTracked} DAYS · ${(st.done30 * 100) / st.due30}% OF THE LAST 30" else null
+                }
+                Zone.STANDING -> {
+                    val run = streaks[d.id]?.currentStreakDays ?: 0
+                    if (run >= GRADUATE_DAYS) "$run DAYS HELD" else null
+                }
+                else -> null
+            }
+            if (detail != null) {
+                db.directiveDao().upsert(d.copy(graduatedEpochMs = now, focus = false, focusSinceEpochMs = null))
+                out += Milestone(Milestone.GRADUATED, d.title, detail)
+            }
+        }
+        val fry = all.find { it.title == FRY_SCREAM_TITLE && it.locked }
+        if (fry != null && unlockProgress(stats, all) >= UNLOCK_NEEDED) {
+            db.directiveDao().setLocked(fry.id, locked = false)
+            out += Milestone(Milestone.UNLOCKED, fry.title, "VOICE PROTOCOL $UNLOCK_NEEDED OF $STAT_DAYS DAYS")
+        }
+        return out
+    }
+
+    /** Full Voice Protocol days in the last STAT_DAYS, toward the Fry Scream
+     *  unlock. Null when there's no Voice Protocol directive to earn it from. */
+    fun unlockProgress(stats: Map<Long, DirectiveStats>, all: List<Directive>): Int? {
+        val voice = all.find { it.title == VOICE_TITLE } ?: return null
+        return stats[voice.id]?.cells?.count { it == DayMark.DONE } ?: 0
     }
 
     /** Reminders that fire on entering or leaving a given place. */
@@ -774,26 +1030,36 @@ class AppRepository(private val db: RebuildDatabase) {
         val heldCount: Int,
         val streakScore: Float,
         val hardBoost: Float,
-        val finalPercent: Int
+        val finalPercent: Int,
+        val anomalyBoost: Int = 0
     )
 
     suspend fun computeSyncRatioBreakdown(): SyncRatioBreakdown {
         val directives = db.directiveDao().getAll()
         val completions = db.completionDao().getForDate(todayKey())
         val streaks = db.streakDao().observeAll().first()
-        val completedIds = completions.map { it.directiveId }.toSet()
+        val byId = completions.associateBy { it.directiveId }
+        val today = todayKey()
 
         val now = Calendar.getInstance()
         val dueToday = directives.filter { isDueToday(it, now) && !it.locked }
 
-        val totalWeight = dueToday.sumOf { it.weight.toDouble() }.toFloat()
-        val doneWeight = dueToday.filter { completedIds.contains(it.id) }
-            .sumOf { it.weight.toDouble() }.toFloat()
+        // Focus directives count double; a minimum-version completion counts half.
+        fun w(d: Directive) = d.weight * (if (d.focus) 2f else 1f)
+        val totalWeight = dueToday.sumOf { w(it).toDouble() }.toFloat()
+        val doneWeight = dueToday.sumOf { d ->
+            when (byId[d.id]?.source) {
+                null -> 0.0
+                "min" -> w(d) * 0.5
+                else -> w(d).toDouble()
+            }
+        }.toFloat()
         val completionScore = if (dueToday.isEmpty() || totalWeight == 0f) 1f else doneWeight / totalWeight
 
         val standingDirectives = directives.filter { it.zone == Zone.STANDING }
+        // A streak that survived a slip today still isn't "held" today.
         val heldCount = standingDirectives.count { d ->
-            streaks.find { it.directiveId == d.id }?.currentStreakDays?.let { it > 0 } ?: false
+            streaks.find { it.directiveId == d.id }?.let { it.currentStreakDays > 0 && it.lastSlipDate != today } ?: false
         }
         val streakScore = if (standingDirectives.isEmpty()) 1f else heldCount.toFloat() / standingDirectives.size
 
@@ -802,6 +1068,7 @@ class AppRepository(private val db: RebuildDatabase) {
         // 🔥 boosts sit on top of the normal 0-100 score, so stacking cleared
         // hard objectives is the only way past 100. Capped at 400.
         val boost = directives.filter { it.zone == Zone.HARD }.sumOf { hardBoostNow(it, now).toDouble() }.toFloat()
+        val anomalyBoost = db.anomalyDao().getForDate(today).filter { it.clearedAtEpochMs != null }.sumOf { it.boost }
         return SyncRatioBreakdown(
             dueCount = dueToday.size,
             totalWeight = totalWeight,
@@ -811,7 +1078,8 @@ class AppRepository(private val db: RebuildDatabase) {
             heldCount = heldCount,
             streakScore = streakScore,
             hardBoost = boost,
-            finalPercent = (base + boost.toInt()).coerceIn(0, MAX_SYNC)
+            finalPercent = (base + boost.toInt() + anomalyBoost).coerceIn(0, MAX_SYNC),
+            anomalyBoost = anomalyBoost
         )
     }
 
@@ -886,5 +1154,13 @@ class AppRepository(private val db: RebuildDatabase) {
     companion object {
         const val HARD_BOOST_DAYS = 7
         const val MAX_SYNC = 400
+        const val STAT_DAYS = 14
+        const val MAX_FOCUS = 3
+        const val GRADUATE_DAYS = 66
+        const val GRADUATE_RATE = 0.8f
+        const val UNLOCK_NEEDED = 10
+        const val COPING_TRIGGER = 3
+        const val VOICE_TITLE = "Voice Protocol"
+        const val FRY_SCREAM_TITLE = "Fry Scream Basics"
     }
 }

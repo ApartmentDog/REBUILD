@@ -141,12 +141,84 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         }
     }
 
-    /** Top misses over the last 30 days; recomputed when directives change or
-     *  the date rolls over. */
+    // ---------- Habit design ----------
+
+    /** Fires whenever anything habit stats read could have changed, including
+     *  the date rolling over. */
+    private val habitTrigger: Flow<Unit> =
+        combine(
+            repo.observeAllDirectives(),
+            repo.observeCompletionCount(),
+            repo.observeCompletionsForToday(),
+            repo.observeStreaks(),
+            repo.observeMissesToday()
+        ) { _, _, _, _, _ -> Unit }
+            .combine(repo.observeTodayKey()) { _, _ -> Unit }
+
+    /** Per-directive history: 14-day bar, consistency, lifetime count, flags. */
+    val stats: StateFlow<Map<Long, AppRepository.DirectiveStats>> =
+        habitTrigger.mapLatest { repo.computeStats() }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Top misses over the last 30 days, with the most common reason. */
     val mostMissed: StateFlow<List<AppRepository.MissStat>> =
-        combine(repo.observeAllDirectives(), repo.observeTodayKey()) { _, _ -> Unit }
-            .mapLatest { repo.mostMissed() }
+        habitTrigger.mapLatest { repo.mostMissed() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Reasons logged today, directiveId to reason key. */
+    val missesToday: StateFlow<Map<Long, String>> = repo.observeMissesToday()
+        .map { list -> list.associate { it.directiveId to it.reason } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Graduations and earned unlocks waiting to be shown. */
+    private val _milestones = MutableStateFlow<List<AppRepository.Milestone>>(emptyList())
+    val milestones: StateFlow<List<AppRepository.Milestone>> = _milestones
+
+    init {
+        viewModelScope.launch {
+            habitTrigger.collect {
+                val reached = repo.checkMilestones()
+                if (reached.isNotEmpty()) _milestones.value = _milestones.value + reached
+            }
+        }
+    }
+
+    fun consumeMilestones() { _milestones.value = emptyList() }
+
+    /** The bad-day version: counts for consistency, half weight in Sync. */
+    fun completeMinimum(d: Directive) {
+        viewModelScope.launch { repo.markComplete(d.id, source = "min") }
+    }
+
+    fun recordMiss(directiveId: Long, reason: String) {
+        viewModelScope.launch { repo.recordMiss(directiveId, reason) }
+    }
+
+    fun clearMiss(directiveId: Long) {
+        viewModelScope.launch { repo.clearMissToday(directiveId) }
+    }
+
+    /** [onFull] runs when focus is already at the limit. */
+    fun setFocus(directiveId: Long, on: Boolean, onFull: () -> Unit = {}) {
+        viewModelScope.launch { if (!repo.setFocus(directiveId, on)) onFull() }
+    }
+
+    fun setCopingPlan(directiveId: Long, reason: String, plan: String) {
+        viewModelScope.launch { repo.setCopingPlan(directiveId, reason, plan) }
+    }
+
+    suspend fun copingCandidates() = repo.copingCandidates()
+
+    suspend fun typicalCompletionMinute(directiveId: Long) = repo.typicalCompletionMinute(directiveId)
+
+    fun unlockProgress(stats: Map<Long, AppRepository.DirectiveStats>, all: List<Directive>) =
+        repo.unlockProgress(stats, all)
+
+    fun weeklyOverdueDays(d: Directive) = repo.weeklyOverdueDays(d)
+
+    fun slipStreak(directiveId: Long, note: String?, onResult: (AppRepository.SlipOutcome) -> Unit = {}) {
+        viewModelScope.launch { onResult(repo.breakStreak(directiveId, note)) }
+    }
 
     /** Deletes, then cancels the alarms its reminders had armed -- removing
      *  the rows alone left them in AlarmManager until the next app open. */

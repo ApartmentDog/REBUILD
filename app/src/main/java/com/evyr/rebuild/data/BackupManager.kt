@@ -46,7 +46,11 @@ data class BackupEnvelope(
     val scanProgress: List<DailyScanProgress> = emptyList(),
     val placeDirectives: List<GeofencePlaceDirective> = emptyList(),
     val reminders: List<Reminder> = emptyList(),
-    val volumeProgress: List<DailyVolumeProgress> = emptyList()
+    val volumeProgress: List<DailyVolumeProgress> = emptyList(),
+    val missLog: List<MissEntry> = emptyList(),
+    val routines: List<Routine> = emptyList(),
+    val urges: List<UrgeEntry> = emptyList(),
+    val anomalies: List<Anomaly> = emptyList()
 )
 
 object BackupManager {
@@ -78,14 +82,19 @@ object BackupManager {
         scanProgress = db.dailyScanProgressDao().getAll(),
         placeDirectives = db.geofencePlaceDirectiveDao().getAll(),
         reminders = db.reminderDao().getAll(),
-        volumeProgress = db.dailyVolumeProgressDao().getAll()
+        volumeProgress = db.dailyVolumeProgressDao().getAll(),
+        missLog = db.missDao().getAll(),
+        routines = db.routineDao().getAll(),
+        urges = db.urgeDao().getAll(),
+        anomalies = db.anomalyDao().getAll()
     )
 
     fun countRows(e: BackupEnvelope): Int =
         e.directives.size + e.completions.size + e.streaks.size + e.nfcTags.size +
             e.notebookEntries.size + e.sessionSteps.size + e.sessionLogs.size +
             e.mediaAttachments.size +
-            e.geofencePlaces.size + e.syncHistory.size + e.streakBreaks.size + e.scanProgress.size + e.placeDirectives.size + e.reminders.size + e.volumeProgress.size
+            e.geofencePlaces.size + e.syncHistory.size + e.streakBreaks.size + e.scanProgress.size + e.placeDirectives.size + e.reminders.size + e.volumeProgress.size +
+            e.missLog.size + e.routines.size + e.urges.size + e.anomalies.size
 
     /**
      * Wipes every table and repopulates from the envelope, inside one transaction
@@ -110,6 +119,10 @@ object BackupManager {
             envelope.scanProgress.forEach { db.dailyScanProgressDao().upsert(it) }
             envelope.placeDirectives.forEach { db.geofencePlaceDirectiveDao().link(it) }
             envelope.volumeProgress.forEach { db.dailyVolumeProgressDao().upsert(it) }
+            envelope.missLog.forEach { db.missDao().upsert(it) }
+            envelope.routines.forEach { db.routineDao().upsert(it) }
+            envelope.urges.forEach { db.urgeDao().insert(it) }
+            envelope.anomalies.forEach { db.anomalyDao().upsert(it) }
             // Alarms are re-armed by the caller afterwards
             // (MainViewModel.rearmAfterRestore), which has the Context this lacks.
             envelope.reminders.forEach { db.reminderDao().upsert(it) }

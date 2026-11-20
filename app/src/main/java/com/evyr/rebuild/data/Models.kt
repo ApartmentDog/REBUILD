@@ -75,7 +75,26 @@ data class Directive(
     // hardBoost is the Sync Ratio bonus (in points) it grants when cleared;
     // it decays to zero over a week, and stacks past 100.
     val hardBoost: Int = 0,
-    val hardClearedEpochMs: Long? = null
+    val hardClearedEpochMs: Long? = null,
+    // ---- Habit design (schema 26) ----
+    // Implementation intention, the "after I ___" cue. Shown on the row and in
+    // reminders. Tying a habit to an existing routine is one of the
+    // best-replicated effects in habit research.
+    val anchor: String? = null,
+    // The smallest version that still counts on a bad day ("10 push-ups").
+    // Logged as a completion with source "min": counts for consistency and
+    // streak-keeping, at half weight in the Sync Ratio.
+    val minimumVersion: String? = null,
+    // Being actively formed (max AppRepository.MAX_FOCUS): pinned to the top,
+    // double weight in the Sync Ratio.
+    val focus: Boolean = false,
+    val focusSinceEpochMs: Long? = null,
+    // Set when the habit is judged automatic -- see AppRepository.checkMilestones.
+    val graduatedEpochMs: Long? = null,
+    // If-then plan for the obstacle that keeps winning: "if [copingReason],
+    // then [copingPlan]". Prompted after repeated misses for the same reason.
+    val copingReason: String? = null,
+    val copingPlan: String? = null
 )
 
 /**
@@ -147,7 +166,10 @@ data class Streak(
     val lastBrokenNote: String? = null,
     // yyyy-MM-dd of the last HOLD. Stops HOLD being tapped repeatedly in one
     // day to inflate the streak count.
-    val lastHeldDate: String? = null
+    val lastHeldDate: String? = null,
+    // yyyy-MM-dd of the most recent slip. Never miss twice: one slip leaves
+    // the count standing, a slip on the very next day resets it.
+    val lastSlipDate: String? = null
 )
 
 /**
@@ -458,5 +480,75 @@ data class ConfessionEntry(
     val writtenAtEpochMs: Long
 )
 
+// ---------- Habit design (schema 26) ----------
 
+/** Why a due directive didn't get done, from the evening check-in. One per
+ *  directive per day. Feeds Most Missed and the coping-plan prompt. */
+@Serializable
+@Entity(tableName = "miss_log", primaryKeys = ["directiveId", "date"])
+data class MissEntry(
+    val directiveId: Long,
+    val date: String,
+    val reason: String,          // one of MissReasons.ALL keys
+    val loggedAtEpochMs: Long
+)
 
+object MissReasons {
+    /** key to label. Keys are stored, so don't rename them. */
+    val ALL = listOf(
+        "TIRED" to "TIRED",
+        "FORGOT" to "FORGOT",
+        "NO_TIME" to "NO TIME",
+        "SKIPPED" to "DIDN'T WANT TO",
+        "OTHER" to "OTHER"
+    )
+    fun label(key: String?): String = ALL.firstOrNull { it.first == key }?.second ?: (key ?: "")
+    /** For the "if ___, then" half of a coping plan. */
+    fun condition(key: String?): String = when (key) {
+        "TIRED" -> "I'm tired"
+        "FORGOT" -> "I'd forget"
+        "NO_TIME" -> "I'm short on time"
+        "SKIPPED" -> "I don't feel like it"
+        else -> "it's not happening"
+    }
+}
+
+/** An ordered chain of directives run one step at a time, so one decision
+ *  ("start the morning run") covers several habits. */
+@Serializable
+@Entity(tableName = "routines")
+data class Routine(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val directiveIds: String,    // ordered, comma-joined
+    val sortOrder: Int = 0
+) {
+    fun ids(): List<Long> = directiveIds.split(",").mapNotNull { it.trim().toLongOrNull() }
+}
+
+/** One use of the urge button on a standing goal. */
+@Serializable
+@Entity(tableName = "urge_log")
+data class UrgeEntry(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val directiveId: Long,
+    val startedAtEpochMs: Long,
+    val outcome: String          // RODE_OUT | STOPPED | SLIPPED
+)
+
+/** A surprise timed challenge. Cleared ones add [boost] to that day's Sync Ratio. */
+@Serializable
+@Entity(tableName = "anomalies")
+data class Anomaly(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val date: String,
+    val text: String,
+    val spawnedAtEpochMs: Long,
+    val expiresAtEpochMs: Long,
+    val clearedAtEpochMs: Long? = null,
+    val boost: Int = 5
+)
+
+/** Row shapes for grouped queries (not tables). */
+data class DirectiveCount(val directiveId: Long, val n: Int)
+data class DirectiveFirst(val directiveId: Long, val first: String)

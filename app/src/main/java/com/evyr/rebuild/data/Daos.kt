@@ -53,6 +53,18 @@ interface CompletionDao {
     @Query("DELETE FROM completions WHERE directiveId = :directiveId")
     suspend fun clearAllFor(directiveId: Long)
 
+    @Query("SELECT * FROM completions WHERE date >= :date")
+    suspend fun getSince(date: String): List<Completion>
+
+    @Query("SELECT directiveId, COUNT(*) AS n FROM completions GROUP BY directiveId")
+    suspend fun countsByDirective(): List<DirectiveCount>
+
+    @Query("SELECT directiveId, MIN(date) AS first FROM completions GROUP BY directiveId")
+    suspend fun firstDates(): List<DirectiveFirst>
+
+    @Query("SELECT * FROM completions WHERE directiveId = :directiveId AND source != 'hold' ORDER BY completedAtEpochMs DESC LIMIT :limit")
+    suspend fun recentTimed(directiveId: Long, limit: Int): List<Completion>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(completion: Completion)
 
@@ -364,4 +376,76 @@ interface ConfessionEntryDao {
 
     @Delete
     suspend fun delete(entry: ConfessionEntry)
+}
+
+@Dao
+interface MissDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entry: MissEntry)
+
+    @Query("DELETE FROM miss_log WHERE directiveId = :directiveId AND date = :date")
+    suspend fun clear(directiveId: Long, date: String)
+
+    @Query("DELETE FROM miss_log WHERE directiveId = :directiveId")
+    suspend fun clearAllFor(directiveId: Long)
+
+    @Query("SELECT * FROM miss_log WHERE date >= :date")
+    suspend fun getSince(date: String): List<MissEntry>
+
+    @Query("SELECT * FROM miss_log WHERE date = :date")
+    fun observeForDate(date: String): Flow<List<MissEntry>>
+
+    @Query("SELECT * FROM miss_log")
+    suspend fun getAll(): List<MissEntry>
+}
+
+@Dao
+interface RoutineDao {
+    @Query("SELECT * FROM routines ORDER BY sortOrder, id")
+    fun observeAll(): Flow<List<Routine>>
+
+    @Query("SELECT * FROM routines")
+    suspend fun getAll(): List<Routine>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(routine: Routine): Long
+
+    @Delete
+    suspend fun delete(routine: Routine)
+}
+
+@Dao
+interface UrgeDao {
+    @Insert
+    suspend fun insert(entry: UrgeEntry)
+
+    @Query("SELECT * FROM urge_log")
+    suspend fun getAll(): List<UrgeEntry>
+
+    @Query("SELECT directiveId, COUNT(*) AS n FROM urge_log WHERE outcome = 'RODE_OUT' GROUP BY directiveId")
+    fun observeRiddenCounts(): Flow<List<DirectiveCount>>
+
+    @Query("SELECT COUNT(*) FROM urge_log WHERE outcome = 'RODE_OUT'")
+    suspend fun riddenTotal(): Int
+
+    @Query("DELETE FROM urge_log WHERE directiveId = :directiveId")
+    suspend fun clearAllFor(directiveId: Long)
+}
+
+@Dao
+interface AnomalyDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(anomaly: Anomaly): Long
+
+    @Query("SELECT * FROM anomalies WHERE date = :date ORDER BY spawnedAtEpochMs DESC")
+    fun observeForDate(date: String): Flow<List<Anomaly>>
+
+    @Query("SELECT * FROM anomalies WHERE date = :date")
+    suspend fun getForDate(date: String): List<Anomaly>
+
+    @Query("SELECT * FROM anomalies WHERE id = :id")
+    suspend fun getById(id: Long): Anomaly?
+
+    @Query("SELECT * FROM anomalies")
+    suspend fun getAll(): List<Anomaly>
 }
