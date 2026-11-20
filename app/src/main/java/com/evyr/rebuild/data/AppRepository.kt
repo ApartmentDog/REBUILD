@@ -306,7 +306,7 @@ class AppRepository(private val db: RebuildDatabase) {
             db.completionDao().clear(directiveId, today)
             days = (days - 1).coerceAtLeast(0)
         }
-        val reset = existing.lastSlipDate == dayKeyOffset(-1) || days == 0
+        val reset = existing.lastSlipDate == dayKeyOffset(-1)
         db.streakDao().upsert(
             existing.copy(
                 currentStreakDays = if (reset) 0 else days,
@@ -316,7 +316,7 @@ class AppRepository(private val db: RebuildDatabase) {
                 lastBrokenNote = if (reset) note else existing.lastBrokenNote
             )
         )
-        return if (reset) SlipOutcome.RESET else SlipOutcome.KEPT
+        return if (reset && days > 0) SlipOutcome.RESET else SlipOutcome.KEPT
     }
 
     /** yyyy-MM-dd for today plus [offset] days. */
@@ -911,7 +911,10 @@ class AppRepository(private val db: RebuildDatabase) {
             val st = stats[d.id] ?: continue
             val detail: String? = when (d.zone) {
                 Zone.DAILY, Zone.WEEKLY -> {
-                    val minDue = if (d.zone == Zone.WEEKLY) 4 else 15
+                    // Enough due days in the window to judge: ~4 for a weekly
+                    // item, 8 for anything more often (a 3-days-a-week habit
+                    // only comes due ~13 times in 30).
+                    val minDue = if (d.zone == Zone.WEEKLY) 4 else 8
                     if (st.daysTracked >= GRADUATE_DAYS && st.due30 >= minDue &&
                         st.done30 >= GRADUATE_RATE * st.due30
                     ) "${st.daysTracked} DAYS · ${(st.done30 * 100) / st.due30}% OF THE LAST 30" else null
