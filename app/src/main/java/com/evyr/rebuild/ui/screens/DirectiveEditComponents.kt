@@ -154,6 +154,8 @@ fun DirectiveEditDialog(
     var weekday by remember { mutableStateOf(existing?.weekday) }
     var placeId by remember { mutableStateOf(existing?.placeId) }
     var hardBoost by remember { mutableStateOf(existing?.hardBoost?.takeIf { it > 0 } ?: 10) }
+    var anchor by remember { mutableStateOf(existing?.anchor ?: "") }
+    var minimum by remember { mutableStateOf(existing?.minimumVersion ?: "") }
     var remindOn by remember { mutableStateOf(false) }
     var remindHour by remember { mutableStateOf(9) }
     var remindMinute by remember { mutableStateOf(0) }
@@ -190,6 +192,36 @@ fun DirectiveEditDialog(
                     placeholder = { Text("Title", fontFamily = TerminalFontFamily) },
                     colors = rebuildTextFieldColors()
                 )
+                if (zone != Zone.MINDSET && zone != Zone.HARD) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = anchor,
+                        onValueChange = { anchor = it },
+                        label = { Text("AFTER I…", fontFamily = TerminalFontFamily, fontSize = 11.sp) },
+                        placeholder = { Text("get home / finish breakfast", fontFamily = TerminalFontFamily, fontSize = 12.sp) },
+                        singleLine = true,
+                        colors = rebuildTextFieldColors()
+                    )
+                    Text(
+                        "The cue it follows. Shown on the row and in its reminders.",
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
+                    )
+                }
+                if (checkable) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = minimum,
+                        onValueChange = { minimum = it },
+                        label = { Text("MINIMUM VERSION", fontFamily = TerminalFontFamily, fontSize = 11.sp) },
+                        placeholder = { Text("10 push-ups / 2 minutes", fontFamily = TerminalFontFamily, fontSize = 12.sp) },
+                        singleLine = true,
+                        colors = rebuildTextFieldColors()
+                    )
+                    Text(
+                        "For bad days. Long-press the row to log it: keeps the habit going at half weight.",
+                        fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 Text("ZONE", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
@@ -502,6 +534,12 @@ fun DirectiveEditDialog(
                                 weekday = if (zone == Zone.WEEKLY) weekday else null,
                                 placeId = if (placeable) placeId else null,
                                 hardBoost = if (zone == Zone.HARD) hardBoost else 0,
+                                // "After I get home" typed in full would read
+                                // "AFTER AFTER I GET HOME" on the row.
+                                anchor = if (zone != Zone.MINDSET && zone != Zone.HARD)
+                                    anchor.trim().replaceFirst(Regex("^(?i)after\\s+"), "").ifBlank { null } else null,
+                                minimumVersion = if (zone == Zone.DAILY || zone == Zone.WEEKLY) minimum.trim().ifBlank { null } else null,
+                                focus = if (zone == Zone.MINDSET || zone == Zone.HARD) false else (existing?.focus ?: false),
                                 // Moving an objective out of HARD drops its cleared state.
                                 hardClearedEpochMs = if (zone == Zone.HARD) existing?.hardClearedEpochMs else null
                             )
@@ -546,6 +584,10 @@ fun ReminderManagementDialog(
     var showAddForm by remember { mutableStateOf(false) }
     var hour by remember { mutableStateOf(9) }
     var minute by remember { mutableStateOf(0) }
+    // When this actually gets done, from its completion history -- a better
+    // reminder time than a guess.
+    var typicalMinute by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(directive.id) { typicalMinute = viewModel.typicalCompletionMinute(directive.id) }
     var message by remember { mutableStateOf("") }
     var reminderType by remember { mutableStateOf(com.evyr.rebuild.data.ReminderType.NOTIFICATION) }
     var calRecurrence by remember { mutableStateOf(RecurrenceType.NONE) }
@@ -763,6 +805,25 @@ fun ReminderManagementDialog(
                     Text("TIME", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
                     Spacer(Modifier.height(4.dp))
                     ReminderTimeField(hour, minute) { h, m -> hour = h; minute = m }
+                    typicalMinute?.let { usual ->
+                        val lead = (usual - 30 + 1440) % 1440
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "YOU USUALLY DO THIS AROUND ${clockLabel(usual)}",
+                                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                "REMIND ${clockLabel(lead)}",
+                                fontFamily = TerminalFontFamily, color = NervBackground, fontSize = 11.sp,
+                                modifier = Modifier
+                                    .background(NervOrange, RoundedCornerShape(6.dp))
+                                    .clickable { hour = lead / 60; minute = lead % 60 }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = message,
@@ -1154,3 +1215,11 @@ private fun ReminderTimeField(hour: Int, minute: Int, onPick: (Int, Int) -> Unit
 }
 
 private val WEEKDAY_CHIPS = listOf(1 to "SUN", 2 to "MON", 3 to "TUE", 4 to "WED", 5 to "THU", 6 to "FRI", 7 to "SAT")
+
+/** Minutes after midnight as "8:40 PM". */
+private fun clockLabel(minutes: Int): String {
+    val h = minutes / 60
+    val m = minutes % 60
+    val h12 = if (h % 12 == 0) 12 else h % 12
+    return "%d:%02d %s".format(h12, m, if (h < 12) "AM" else "PM")
+}

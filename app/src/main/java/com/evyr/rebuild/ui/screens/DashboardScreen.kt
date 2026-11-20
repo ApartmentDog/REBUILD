@@ -41,7 +41,8 @@ fun DashboardScreen(
     nfcUnavailableReason: String = "",
     onOpenSecretPrompt: () -> Unit = {},
     onOpenNotebook: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenCheckIn: () -> Unit = {}
 ) {
     val syncRatio by viewModel.syncRatio.collectAsState()
     val syncHistory by viewModel.syncHistory.collectAsState()
@@ -97,6 +98,20 @@ fun DashboardScreen(
             .map { it.id }.toSet()
     }
     val today = viewModel.todayKey()
+    val stats by viewModel.stats.collectAsState()
+    val allDirectives by viewModel.allDirectives.collectAsState()
+    val milestones by viewModel.milestones.collectAsState()
+    val minIds = remember(completions) { completions.filter { it.source == "min" }.map { it.directiveId }.toSet() }
+    // Voice Protocol full days toward unlocking Fry Scream; null = nothing to earn it from.
+    val unlockProgress = remember(stats, allDirectives) { viewModel.unlockProgress(stats, allDirectives) }
+    val yesterday = remember(today) { viewModel.dayKeyOffset(-1) }
+    // Focus first, then anything missed yesterday (never miss twice), then
+    // whatever's tied to where you are now.
+    val habitOrder = compareBy<Directive>(
+        { if (it.focus) 0 else 1 },
+        { if (stats[it.id]?.missedYesterday == true && it.id !in completedIds) 0 else 1 },
+        { if (it.placeId != null && it.placeId in herePlaceIds) 0 else 1 }
+    )
 
     // The sealed code: revealed once, the first time the 5th 🔥 clear lands.
     val vault = remember { com.evyr.rebuild.data.HardModeVault(context) }
@@ -298,8 +313,7 @@ fun DashboardScreen(
                 when (selectedZone) {
                     0 -> item {
                         // Location objectives for wherever you are right now go first.
-                        val dueDaily = daily.filter { viewModel.isDueToday(it) }
-                            .sortedBy { if (it.placeId != null && it.placeId in herePlaceIds) 0 else 1 }
+                        val dueDaily = daily.filter { viewModel.isDueToday(it) }.sortedWith(habitOrder)
                         val tapTrackers = dueDaily.filter { it.requiredScans > 1 && !it.locked }
                         val volumeTrackers = dueDaily.filter { it.targetOz != null && !it.locked }
                         if (tapTrackers.isNotEmpty()) {
@@ -365,6 +379,11 @@ fun DashboardScreen(
                                     placeLabel = d.placeId?.let { placeNames[it] },
                                     isHere = d.placeId != null && d.placeId in herePlaceIds,
                                     onLongPress = { actionTarget = d },
+                                    stats = stats[d.id],
+                                    isMin = d.id in minIds,
+                                    lockedText = if (d.locked && unlockProgress != null)
+                                        "LOCKED — VOICE PROTOCOL $unlockProgress/${com.evyr.rebuild.data.AppRepository.UNLOCK_NEEDED} FULL DAYS IN THE LAST ${com.evyr.rebuild.data.AppRepository.STAT_DAYS}"
+                                    else null,
                                     onToggle = { acted(); viewModel.toggleComplete(d, it) },
                                     onUnlock = { viewModel.unlockDirective(d.id) },
                                     onTapProgress = { acted(); viewModel.tapProgress(it) }
@@ -373,8 +392,7 @@ fun DashboardScreen(
                         }
                     }
                     1 -> item {
-                        val dueWeekly = weekly.filter { viewModel.isDueToday(it) }
-                            .sortedBy { if (it.placeId != null && it.placeId in herePlaceIds) 0 else 1 }
+                        val dueWeekly = weekly.filter { viewModel.isDueToday(it) }.sortedWith(habitOrder)
                         ZonePanel(title = "WEEKLY") {
                             if (weekly.isEmpty()) {
                                 Text(
@@ -409,6 +427,8 @@ fun DashboardScreen(
                                     placeLabel = d.placeId?.let { placeNames[it] },
                                     isHere = d.placeId != null && d.placeId in herePlaceIds,
                                     onLongPress = { actionTarget = d },
+                                    stats = stats[d.id],
+                                    isMin = d.id in minIds,
                                     onToggle = { acted(); viewModel.toggleComplete(d, it) },
                                     onUnlock = {},
                                     onTapProgress = { acted(); viewModel.tapProgress(it) }
@@ -424,10 +444,28 @@ fun DashboardScreen(
                                     directive = d,
                                     streak = streak,
                                     heldToday = streak?.lastHeldDate == today,
+                                    slippedToday = streak?.lastSlipDate == today,
+                                    slippedYesterday = streak?.lastSlipDate == yesterday,
+                                    stats = stats[d.id],
                                     onLongPress = { actionTarget = d },
                                     viewModel = viewModel,
                                     onConfirmToday = { acted(); viewModel.confirmStreak(d.id) },
-                                    onBreak = { note -> viewModel.breakStreak(d.id, note) }
+                                    onBreak = { note ->
+                                        viewModel.slipStreak(d.id, note) { outcome ->
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                when (outcome) {
+                                                    com.evyr.rebuild.data.AppRepository.SlipOutcome.KEPT ->
+                                                        "Slip logged. The run stands — hold tomorrow and it survives."
+                                                    com.evyr.rebuild.data.AppRepository.SlipOutcome.RESET ->
+                                                        "Second day in a row, so the run resets. Your best and your clean days stay."
+                                                    com.evyr.rebuild.data.AppRepository.SlipOutcome.ALREADY ->
+                                                        "Already logged for today."
+                                                },
+                                                android.widget.Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -454,6 +492,17 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            Text(
+                "CHECK-IN",
+                fontFamily = TerminalFontFamily,
+                // Lit from 6pm, when closing out the day is the point.
+                color = if (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) >= 18) EvaYellow else EvaTextDim,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clickable { onOpenCheckIn() }
+                    .padding(vertical = 6.dp)
+            )
             if (selectedZone != 4) {
                 Text(
                     "+ ADD",
@@ -500,6 +549,41 @@ fun DashboardScreen(
         Spacer(Modifier.height(8.dp))
     }
 
+    milestones.firstOrNull()?.let { m ->
+        val graduated = m.kind == com.evyr.rebuild.data.AppRepository.Milestone.GRADUATED
+        LaunchedEffect(m) {
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        }
+        AlertDialog(
+            onDismissRequest = { viewModel.consumeMilestone() },
+            containerColor = EvaPanelBg,
+            title = {
+                Text(
+                    if (graduated) "★ GRADUATED" else "UNLOCKED",
+                    fontFamily = TerminalFontFamily, color = EvaYellow, fontWeight = FontWeight.Bold, letterSpacing = 2.sp
+                )
+            },
+            text = {
+                Column {
+                    Text(m.title.uppercase(), fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(m.detail, fontFamily = TerminalFontFamily, color = EvaGreen, fontSize = 12.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        if (graduated) "It's automatic now. It leaves focus and frees the slot — still tracked, just quieter."
+                        else "Earned, not granted. It's on your list from today.",
+                        fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 12.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.consumeMilestone() }) {
+                    Text("ACKNOWLEDGED", fontFamily = TerminalFontFamily, color = EvaGreen, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
     if (showAdd) {
         DirectiveEditDialog(
             existing = null,
@@ -523,11 +607,28 @@ fun DashboardScreen(
             },
             text = {
                 Column {
-                    listOf<Pair<String, () -> Unit>>(
-                        "EDIT" to { editTarget = d },
-                        "REMINDERS" to { remindersTarget = d },
-                        "DELETE" to { deleteTarget = d }
-                    ).forEach { (label, action) ->
+                    val checkable = d.zone == com.evyr.rebuild.data.Zone.DAILY || d.zone == com.evyr.rebuild.data.Zone.WEEKLY
+                    buildList<Pair<String, () -> Unit>> {
+                        val minimum = d.minimumVersion
+                        if (checkable && !minimum.isNullOrBlank() && d.id !in completedIds) {
+                            add("DID THE MINIMUM: ${minimum.uppercase()}" to { acted(); viewModel.completeMinimum(d) })
+                        }
+                        if (d.id in minIds) {
+                            add("DID THE FULL THING" to { acted(); viewModel.toggleComplete(d, true) })
+                        }
+                        if (d.graduatedEpochMs == null && (checkable || d.zone == com.evyr.rebuild.data.Zone.STANDING)) {
+                            add((if (d.focus) "UNFOCUS" else "FOCUS ◆") to {
+                                viewModel.setFocus(d.id, !d.focus) {
+                                    android.widget.Toast.makeText(
+                                        context, "Focus is full (3). Take one off first.", android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            })
+                        }
+                        add("EDIT" to { editTarget = d })
+                        add("REMINDERS" to { remindersTarget = d })
+                        add("DELETE" to { deleteTarget = d })
+                    }.forEach { (label, action) ->
                         Text(
                             label,
                             fontFamily = TerminalFontFamily,
@@ -639,6 +740,12 @@ private fun MostMissedPanel(stats: List<com.evyr.rebuild.data.AppRepository.Miss
                         fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 12.sp,
                         modifier = Modifier.weight(1f)
                     )
+                    s.topReason?.let { r ->
+                        Text(
+                            "MOSTLY ${com.evyr.rebuild.data.MissReasons.label(r)}  ",
+                            fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp
+                        )
+                    }
                     Text(
                         "${s.missed} OF ${s.due}",
                         fontFamily = TerminalFontFamily, color = EvaRed, fontSize = 12.sp, fontWeight = FontWeight.Bold
@@ -810,6 +917,9 @@ private fun CheckableRow(
     placeLabel: String? = null,
     isHere: Boolean = false,
     onLongPress: () -> Unit = {},
+    stats: com.evyr.rebuild.data.AppRepository.DirectiveStats? = null,
+    isMin: Boolean = false,
+    lockedText: String? = null,
     onToggle: (Boolean) -> Unit,
     onUnlock: () -> Unit,
     onTapProgress: (Long) -> Unit = {}
@@ -833,18 +943,19 @@ private fun CheckableRow(
             Box(
                 modifier = Modifier
                     .size(24.dp)
-                    .background(if (isDone) EvaRed else Color(0xFF2A2A2E))
-                    .border(2.dp, if (isDone) EvaRed else Color(0xFF3A3A3E))
+                    .background(if (isMin) EvaYellow else if (isDone) EvaRed else Color(0xFF2A2A2E))
+                    .border(2.dp, if (isMin) EvaYellow else if (isDone) EvaRed else Color(0xFF3A3A3E))
                     .clickable(enabled = checkEnabled) { onToggle(!isDone) },
                 contentAlignment = Alignment.Center
             ) {
                 if (isDone) {
-                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = if (isMin) Color.Black else Color.White, modifier = Modifier.size(16.dp))
                 }
             }
             Spacer(Modifier.width(12.dp))
             Text(
-                text = directive.title.uppercase(),
+                text = (if (directive.focus) "◆ " else "") + directive.title.uppercase() +
+                    (if (directive.graduatedEpochMs != null) " ★" else ""),
                 fontFamily = TerminalFontFamily,
                 color = if (directive.locked) EvaTextDim else EvaTextPrimary,
                 fontSize = 13.sp,
@@ -871,9 +982,42 @@ private fun CheckableRow(
                 modifier = Modifier.padding(start = 36.dp)
             )
         }
+        directive.anchor?.takeIf { it.isNotBlank() && !directive.locked }?.let {
+            Text(
+                text = "AFTER ${it.uppercase()}",
+                fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp,
+                modifier = Modifier.padding(start = 36.dp)
+            )
+        }
+        if (!isDone && !directive.locked) {
+            val overdue = stats?.overdueDays
+            when {
+                stats?.missedYesterday == true -> Text(
+                    text = "DON'T MISS TWICE" + (directive.copingPlan?.takeIf { it.isNotBlank() }
+                        ?.let { " · IF ${com.evyr.rebuild.data.MissReasons.condition(directive.copingReason).uppercase()}: ${it.uppercase()}" } ?: ""),
+                    fontFamily = TerminalFontFamily, color = EvaRedLight, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 36.dp)
+                )
+                overdue != null -> Text(
+                    text = "OVERDUE $overdue DAY${if (overdue == 1) "" else "S"}",
+                    fontFamily = TerminalFontFamily, color = EvaRedLight, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 36.dp)
+                )
+            }
+        }
+        if (isMin) {
+            Text(
+                text = "MINIMUM: ${(directive.minimumVersion ?: "").uppercase()} · LONG-PRESS TO UPGRADE",
+                fontFamily = TerminalFontFamily, color = EvaYellow, fontSize = 11.sp,
+                modifier = Modifier.padding(start = 36.dp)
+            )
+        }
+        if (stats != null && !directive.locked && stats.lifetime > 0) {
+            HabitLine(stats, Modifier.padding(start = 36.dp, top = 3.dp))
+        }
         if (directive.locked) {
             Text(
-                text = "LOCKED — BUILD VOICE PROTOCOL CONSISTENCY TO UNLOCK",
+                text = lockedText ?: "LOCKED — BUILD VOICE PROTOCOL CONSISTENCY TO UNLOCK",
                 fontFamily = TerminalFontFamily,
                 color = EvaTextDim,
                 fontSize = 11.sp,
@@ -917,6 +1061,9 @@ private fun StreakRow(
     directive: Directive,
     streak: Streak?,
     heldToday: Boolean,
+    slippedToday: Boolean = false,
+    slippedYesterday: Boolean = false,
+    stats: com.evyr.rebuild.data.AppRepository.DirectiveStats? = null,
     onLongPress: () -> Unit = {},
     viewModel: MainViewModel,
     onConfirmToday: () -> Unit,
@@ -951,12 +1098,26 @@ private fun StreakRow(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "$days DAY${if (days == 1) "" else "S"} UNBROKEN" +
-                    (streak?.bestStreakDays?.takeIf { it > 0 }?.let { " · BEST $it" } ?: ""),
+                text = (if (directive.focus) "◆ " else "") + "$days DAY RUN" +
+                    (streak?.bestStreakDays?.takeIf { it > 0 }?.let { " · BEST $it" } ?: "") +
+                    (stats?.takeIf { it.due30 > 0 }?.let { " · CLEAN ${it.done30}/${it.due30}" } ?: ""),
                 fontFamily = TerminalFontFamily,
                 color = EvaTextDim,
                 fontSize = 11.sp
             )
+            when {
+                slippedToday -> Text(
+                    "SLIPPED TODAY — HOLD TOMORROW AND THE RUN SURVIVES",
+                    fontFamily = TerminalFontFamily, color = EvaYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold
+                )
+                slippedYesterday && !heldToday -> Text(
+                    "DON'T SLIP TWICE",
+                    fontFamily = TerminalFontFamily, color = EvaRedLight, fontSize = 11.sp, fontWeight = FontWeight.Bold
+                )
+            }
+            stats?.takeIf { it.cells.any { c -> c != com.evyr.rebuild.data.AppRepository.DayMark.OFF && c != com.evyr.rebuild.data.AppRepository.DayMark.OPEN } }?.let {
+                com.evyr.rebuild.ui.components.ConsistencyBar(it.cells, Modifier.padding(top = 3.dp))
+            }
             breakPattern?.let { (weekday, count) ->
                 Text(
                     text = "BREAKS MOST ON ${WEEKDAY_NAMES.getOrElse(weekday) { "?" }} ($count TIMES)",
@@ -967,16 +1128,16 @@ private fun StreakRow(
             }
         }
         // Once a day: the repository ignores a second HOLD, so the button says so.
-        TextButton(onClick = onConfirmToday, enabled = !heldToday) {
+        TextButton(onClick = onConfirmToday, enabled = !heldToday && !slippedToday) {
             Text(
                 if (heldToday) "HELD" else "HOLD",
                 fontFamily = TerminalFontFamily,
-                color = if (heldToday) EvaTextDim else EvaGreen,
+                color = if (heldToday || slippedToday) EvaTextDim else EvaGreen,
                 fontSize = 11.sp, fontWeight = FontWeight.Bold
             )
         }
-        TextButton(onClick = { showBreakDialog = true }) {
-            Text("BREAK", fontFamily = TerminalFontFamily, color = EvaRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        TextButton(onClick = { showBreakDialog = true }, enabled = !slippedToday) {
+            Text("SLIP", fontFamily = TerminalFontFamily, color = if (slippedToday) EvaTextDim else EvaRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 
@@ -985,7 +1146,7 @@ private fun StreakRow(
         AlertDialog(
             onDismissRequest = { showBreakDialog = false },
             containerColor = EvaPanelBg,
-            title = { Text("STREAK BROKEN", fontFamily = TerminalFontFamily, color = EvaRed, fontWeight = FontWeight.Bold) },
+            title = { Text("LOG A SLIP", fontFamily = TerminalFontFamily, color = EvaRed, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = note,
@@ -1079,4 +1240,19 @@ private fun VolumeEntryDialog(
             }
         }
     )
+}
+
+/** 14-day bar, 30-day consistency and lifetime count under a row. The
+ *  lifetime count never goes down -- one missed day can't take it away. */
+@Composable
+private fun HabitLine(stats: com.evyr.rebuild.data.AppRepository.DirectiveStats, modifier: Modifier = Modifier) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        com.evyr.rebuild.ui.components.ConsistencyBar(stats.cells)
+        Spacer(Modifier.width(8.dp))
+        val pct = stats.consistency30?.takeIf { stats.due30 >= 5 }?.let { "${(it * 100).toInt()}% · " } ?: ""
+        Text(
+            "$pct×${stats.lifetime}",
+            fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp
+        )
+    }
 }

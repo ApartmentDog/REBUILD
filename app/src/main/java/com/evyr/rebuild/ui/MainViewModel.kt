@@ -183,7 +183,10 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         }
     }
 
-    fun consumeMilestones() { _milestones.value = emptyList() }
+    /** Drops the milestone just shown; the next one (if any) shows after it. */
+    fun consumeMilestone() { _milestones.value = _milestones.value.drop(1) }
+
+    fun dayKeyOffset(offset: Int): String = repo.dayKeyOffset(offset)
 
     /** The bad-day version: counts for consistency, half weight in Sync. */
     fun completeMinimum(d: Directive) {

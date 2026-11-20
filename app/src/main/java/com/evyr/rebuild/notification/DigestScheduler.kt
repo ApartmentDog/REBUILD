@@ -72,14 +72,23 @@ class DigestReceiver : BroadcastReceiver() {
                 // Re-arm first so a failure below can't break the daily cycle.
                 DigestScheduler.scheduleAll(appContext, prefs)
 
-                val open = repo.openDailyDirectivesToday().map { it.title }
-                if (open.isEmpty()) return@launch
+                val open = repo.openDailyDirectivesToday()
+                    .sortedByDescending { it.focus }
+                    .map { (if (it.focus) "◆ " else "") + it.title }
                 val helper = NotificationHelper(appContext)
                 when (action) {
-                    DigestScheduler.ACTION_MORNING ->
-                        if (prefs.morningSummaryEnabled) helper.showMorningSummary(open)
-                    DigestScheduler.ACTION_EVENING ->
-                        if (prefs.eveningNudgeEnabled) helper.showEveningNudge(open)
+                    DigestScheduler.ACTION_MORNING -> {
+                        val first = com.evyr.rebuild.data.DayPlan.firstMove(appContext, repo.todayKey())
+                        if (prefs.morningSummaryEnabled && (open.isNotEmpty() || first != null)) {
+                            helper.showMorningSummary(open, first)
+                        }
+                    }
+                    DigestScheduler.ACTION_EVENING -> {
+                        val unchecked = repo.standingUncheckedToday()
+                        if (prefs.eveningNudgeEnabled && (open.isNotEmpty() || unchecked > 0)) {
+                            helper.showEveningNudge(open, unchecked)
+                        }
+                    }
                 }
             } finally {
                 pending.finish()

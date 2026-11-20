@@ -20,7 +20,7 @@ import com.evyr.rebuild.ui.MainViewModel
 import com.evyr.rebuild.ui.screens.*
 import com.evyr.rebuild.ui.theme.RebuildTheme
 
-private enum class Screen { LOCK, PERMISSIONS, DAILY_QUOTE, DASHBOARD, NOTEBOOK, SETTINGS, NFC_TAGS, LOCATIONS, GUIDED_SESSIONS, HIDDEN_MEDIA, TAROT_PULL, TAROT_LOG, BOOK_LIBRARY, BOOK_READER, CONFESSION_BOOTH, HOARD }
+private enum class Screen { LOCK, PERMISSIONS, DAILY_QUOTE, DASHBOARD, NOTEBOOK, SETTINGS, NFC_TAGS, LOCATIONS, GUIDED_SESSIONS, HIDDEN_MEDIA, TAROT_PULL, TAROT_LOG, BOOK_LIBRARY, BOOK_READER, CONFESSION_BOOTH, HOARD, CHECK_IN }
 private enum class NfcStatus { OK, DISABLED, NO_HARDWARE }
 
 // FragmentActivity rather than ComponentActivity: BiometricPrompt requires a
@@ -31,6 +31,9 @@ class MainActivity : FragmentActivity() {
     private lateinit var nfcHelper: NfcHelper
     private lateinit var viewModel: MainViewModel
     private var pendingScanUid by mutableStateOf<String?>(null)
+    // Where a notification asked to land (e.g. the evening check-in). Held
+    // until the PIN and the morning screens are done, then acted on.
+    private var pendingOpen by mutableStateOf<String?>(null)
     private var pendingScanIntent: Intent? = null
     private var nfcStatus by mutableStateOf(NfcStatus.OK)
 
@@ -91,6 +94,8 @@ class MainActivity : FragmentActivity() {
             com.evyr.rebuild.notification.DigestScheduler.scheduleAll(applicationContext, repo.getNotificationPrefs())
         }
 
+        pendingOpen = intent?.getStringExtra(EXTRA_OPEN)
+
         nfcHelper = NfcHelper()
         nfcHelper.init(this)
         nfcStatus = computeNfcStatus()
@@ -99,6 +104,12 @@ class MainActivity : FragmentActivity() {
             RebuildTheme {
             com.evyr.rebuild.ui.components.ConsoleFrame {
                 var screen by remember { mutableStateOf(Screen.LOCK) }
+                LaunchedEffect(screen, pendingOpen) {
+                    if (screen == Screen.DASHBOARD && pendingOpen == OPEN_CHECKIN) {
+                        pendingOpen = null
+                        screen = Screen.CHECK_IN
+                    }
+                }
                 val scope = rememberCoroutineScope()
                 var showCheatCodeDialog by remember { mutableStateOf(false) }
                 var cheatCodeError by remember { mutableStateOf<String?>(null) }
@@ -179,6 +190,7 @@ class MainActivity : FragmentActivity() {
                     )
                     Screen.DASHBOARD -> DashboardScreen(
                         viewModel = viewModel,
+                        onOpenCheckIn = { screen = Screen.CHECK_IN },
                         nfcDisabled = nfcStatus != NfcStatus.OK,
                         nfcUnavailableReason = if (nfcStatus == NfcStatus.NO_HARDWARE) "No NFC hardware on this device" else "NFC is turned off — enable it in system settings",
                         onOpenSecretPrompt = { showCheatCodeDialog = true },
@@ -255,6 +267,10 @@ class MainActivity : FragmentActivity() {
                         onBack = { screen = Screen.DASHBOARD }
                     )
                     Screen.HOARD -> HoardScreen(
+                        viewModel = viewModel,
+                        onBack = { screen = Screen.DASHBOARD }
+                    )
+                    Screen.CHECK_IN -> CheckInScreen(
                         viewModel = viewModel,
                         onBack = { screen = Screen.DASHBOARD }
                     )
@@ -391,6 +407,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_OPEN)?.let { pendingOpen = it }
         pendingScanIntent = intent
 
         val label = armedLabel
@@ -408,6 +425,11 @@ class MainActivity : FragmentActivity() {
         } else {
             nfcHelper.extractTagUid(intent)?.let { uid -> pendingScanUid = uid }
         }
+    }
+
+    companion object {
+        const val EXTRA_OPEN = "open"
+        const val OPEN_CHECKIN = "checkin"
     }
 
     fun readLabelFromPendingTag(): String? {

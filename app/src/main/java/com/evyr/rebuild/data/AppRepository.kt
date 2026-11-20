@@ -854,7 +854,7 @@ class AppRepository(private val db: RebuildDatabase) {
             }
         }
         val fry = all.find { it.title == FRY_SCREAM_TITLE && it.locked }
-        if (fry != null && unlockProgress(stats, all) >= UNLOCK_NEEDED) {
+        if (fry != null && (unlockProgress(stats, all) ?: 0) >= UNLOCK_NEEDED) {
             db.directiveDao().setLocked(fry.id, locked = false)
             out += Milestone(Milestone.UNLOCKED, fry.title, "VOICE PROTOCOL $UNLOCK_NEEDED OF $STAT_DAYS DAYS")
         }
@@ -1131,6 +1131,15 @@ class AppRepository(private val db: RebuildDatabase) {
      * exactly the same kind of "still needs doing today" as a Daily one, and the
      * widget/quick-scan callers want everything actually due, not one zone.
      */
+    /** Standing goals with neither a hold nor a slip logged today. */
+    suspend fun standingUncheckedToday(): Int {
+        val today = todayKey()
+        val streaks = db.streakDao().observeAll().first().associateBy { it.directiveId }
+        return db.directiveDao().getAll().count { d ->
+            d.zone == Zone.STANDING && streaks[d.id].let { it?.lastHeldDate != today && it?.lastSlipDate != today }
+        }
+    }
+
     suspend fun openDailyDirectivesToday(): List<Directive> {
         val doneIds = db.completionDao().getForDate(todayKey()).map { it.directiveId }.toSet()
         val now = Calendar.getInstance()

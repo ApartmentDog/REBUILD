@@ -74,6 +74,14 @@ class NotificationHelper(private val context: Context) {
         manager?.createNotificationChannel(remindersChannel)
     }
 
+    /** Opens the app straight to the evening check-in (after the PIN). */
+    private fun openCheckInIntent(): PendingIntent {
+        val i = Intent(context, com.evyr.rebuild.MainActivity::class.java)
+            .putExtra(com.evyr.rebuild.MainActivity.EXTRA_OPEN, com.evyr.rebuild.MainActivity.OPEN_CHECKIN)
+            .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        return PendingIntent.getActivity(context, 1, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
+
     private fun openAppIntent(): PendingIntent {
         val i = Intent(context, com.evyr.rebuild.MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -170,13 +178,20 @@ class NotificationHelper(private val context: Context) {
         NotificationManagerCompat.from(context).notify(4000 + placeId.toInt(), notification)
     }
 
-    /** Morning digest: what's due today, by name. */
-    fun showMorningSummary(titles: List<String>) {
+    /** Morning digest: tomorrow's planned first move (set in last night's
+     *  check-in), then what's due, focus first. */
+    fun showMorningSummary(titles: List<String>, firstMove: String?) {
+        val lines = buildList {
+            firstMove?.let { add("FIRST: $it") }
+            addAll(titles)
+        }
         val notification = NotificationCompat.Builder(context, CHANNEL_DAILY_QUOTE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("TODAY: ${titles.size} DIRECTIVE${if (titles.size == 1) "" else "S"}")
-            .setContentText(titles.joinToString(", "))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(titles.joinToString("\n")))
+            .setContentTitle(
+                if (titles.isEmpty()) "TODAY" else "TODAY: ${titles.size} DIRECTIVE${if (titles.size == 1) "" else "S"}"
+            )
+            .setContentText(lines.joinToString(", "))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
@@ -184,16 +199,23 @@ class NotificationHelper(private val context: Context) {
         NotificationManagerCompat.from(context).notify(2001, notification)
     }
 
-    /** Evening digest: what's still open. Only sent when something is. */
-    fun showEveningNudge(titles: List<String>) {
+    /** Evening digest: opens the check-in. Sent when something's still open
+     *  or a standing goal hasn't been checked today. */
+    fun showEveningNudge(titles: List<String>, standingUnchecked: Int) {
+        val lines = buildList {
+            addAll(titles)
+            if (standingUnchecked > 0) add("$standingUnchecked standing goal${if (standingUnchecked == 1) "" else "s"} to check")
+        }
         val notification = NotificationCompat.Builder(context, CHANNEL_GEOFENCE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("${titles.size} STILL OPEN TODAY")
-            .setContentText(titles.joinToString(", "))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(titles.joinToString("\n")))
+            .setContentTitle(
+                if (titles.isEmpty()) "EVENING CHECK-IN" else "CHECK-IN · ${titles.size} STILL OPEN"
+            )
+            .setContentText(lines.joinToString(", "))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
-            .setContentIntent(openAppIntent())
+            .setContentIntent(openCheckInIntent())
             .build()
         NotificationManagerCompat.from(context).notify(2002, notification)
     }
@@ -242,13 +264,18 @@ class NotificationHelper(private val context: Context) {
         }
 
         val notifId = reminderNotificationId(reminder.id)
-        val body = buildString {
-            reminder.customMessage?.takeIf { it.isNotBlank() }?.let { append(it) }
-            if (nagCount > 0) {
-                if (isNotEmpty()) append(" · ")
-                append("Still open (reminder ${nagCount + 1})")
+        // Cue first (the "after I ___" anchor), then the way out for a bad
+        // day: the if-then plan on a re-nag, and the minimum version.
+        val lines = buildList {
+            reminder.customMessage?.takeIf { it.isNotBlank() }?.let { add(it) }
+            directive.anchor?.takeIf { it.isNotBlank() }?.let { add("After $it.") }
+            if (nagCount > 0) add("Still open (reminder ${nagCount + 1})")
+            directive.copingPlan?.takeIf { it.isNotBlank() && nagCount > 0 }?.let {
+                add("If ${com.evyr.rebuild.data.MissReasons.condition(directive.copingReason)}: $it")
             }
+            directive.minimumVersion?.takeIf { it.isNotBlank() }?.let { add("Minimum counts: $it") }
         }
+        val body = lines.joinToString("\n")
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(directive.title.uppercase())
@@ -256,7 +283,10 @@ class NotificationHelper(private val context: Context) {
             .setCategory(if (isAlarm) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
-        if (body.isNotEmpty()) builder.setContentText(body)
+        if (lines.isNotEmpty()) {
+            builder.setContentText(lines.first())
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        }
 
         // DONE acts on the directive from the shade, no PIN, same as an NFC tap.
         // Left off where one tap can't mean "done": mindset lines and volume
