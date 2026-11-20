@@ -809,6 +809,80 @@ class AppRepository(private val db: RebuildDatabase) {
         return times[times.size / 2]
     }
 
+    // ---------- Routines ----------
+
+    fun observeRoutines(): Flow<List<Routine>> = db.routineDao().observeAll()
+
+    suspend fun saveRoutine(routine: Routine): Long = db.routineDao().upsert(routine)
+
+    suspend fun deleteRoutine(routine: Routine) = db.routineDao().delete(routine)
+
+    // ---------- Urges ----------
+
+    suspend fun logUrge(directiveId: Long, startedAtEpochMs: Long, outcome: String) =
+        db.urgeDao().insert(UrgeEntry(directiveId = directiveId, startedAtEpochMs = startedAtEpochMs, outcome = outcome))
+
+    fun observeUrgesRidden(): Flow<Map<Long, Int>> =
+        db.urgeDao().observeRiddenCounts().map { list -> list.associate { it.directiveId to it.n } }
+
+    // ---------- Anomalies ----------
+
+    fun observeAnomaliesToday(): Flow<List<Anomaly>> =
+        observeTodayKey().flatMapLatest { db.anomalyDao().observeForDate(it) }
+
+    /** At most one a day. Null when today already had one. */
+    suspend fun spawnAnomaly(text: String, durationMs: Long, boost: Int): Anomaly? {
+        val today = todayKey()
+        if (db.anomalyDao().getForDate(today).isNotEmpty()) return null
+        val now = System.currentTimeMillis()
+        val a = Anomaly(date = today, text = text, spawnedAtEpochMs = now, expiresAtEpochMs = now + durationMs, boost = boost)
+        return a.copy(id = db.anomalyDao().upsert(a))
+    }
+
+    /** True if cleared (now or already); false once it's expired. */
+    suspend fun clearAnomaly(id: Long): Boolean {
+        val a = db.anomalyDao().getById(id) ?: return false
+        if (a.clearedAtEpochMs != null) return true
+        val now = System.currentTimeMillis()
+        if (now > a.expiresAtEpochMs) return false
+        db.anomalyDao().upsert(a.copy(clearedAtEpochMs = now))
+        return true
+    }
+
+    // ---------- Service record ----------
+
+    data class ServiceRecord(
+        val firstDate: String?,
+        val daysActive: Int,
+        val totalCompletions: Int,
+        val bestSync: Int,
+        val graduates: List<Pair<String, Long>>,
+        val longestRun: Int,
+        val urgesRidden: Int,
+        val anomaliesCleared: Int,
+        val hardCleared: Int,
+        val perfectFortnight: Boolean
+    )
+
+    suspend fun serviceRecord(): ServiceRecord {
+        val all = db.directiveDao().getAll()
+        val stats = computeStats()
+        return ServiceRecord(
+            firstDate = db.completionDao().firstDate(),
+            daysActive = db.completionDao().distinctDays(),
+            totalCompletions = db.completionDao().total(),
+            bestSync = db.syncHistoryDao().best() ?: 0,
+            graduates = all.mapNotNull { d -> d.graduatedEpochMs?.let { d.title to it } }.sortedBy { it.second },
+            longestRun = db.streakDao().observeAll().first().maxOfOrNull { it.bestStreakDays } ?: 0,
+            urgesRidden = db.urgeDao().riddenTotal(),
+            anomaliesCleared = db.anomalyDao().getAll().count { it.clearedAtEpochMs != null },
+            hardCleared = all.count { it.zone == Zone.HARD && it.hardClearedEpochMs != null },
+            perfectFortnight = stats.values.any { st ->
+                st.cells.size == STAT_DAYS && st.cells.all { it == DayMark.DONE }
+            }
+        )
+    }
+
     // ---------- Milestones ----------
 
     data class Milestone(val kind: String, val title: String, val detail: String) {

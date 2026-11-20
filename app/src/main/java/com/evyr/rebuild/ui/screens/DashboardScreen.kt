@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,7 +44,8 @@ fun DashboardScreen(
     onOpenSecretPrompt: () -> Unit = {},
     onOpenNotebook: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenCheckIn: () -> Unit = {}
+    onOpenCheckIn: () -> Unit = {},
+    onOpenRoutine: (Long) -> Unit = {}
 ) {
     val syncRatio by viewModel.syncRatio.collectAsState()
     val syncHistory by viewModel.syncHistory.collectAsState()
@@ -105,6 +108,18 @@ fun DashboardScreen(
     // Voice Protocol full days toward unlocking Fry Scream; null = nothing to earn it from.
     val unlockProgress = remember(stats, allDirectives) { viewModel.unlockProgress(stats, allDirectives) }
     val yesterday = remember(today) { viewModel.dayKeyOffset(-1) }
+    val routines by viewModel.routines.collectAsState()
+    val anomalies by viewModel.anomaliesToday.collectAsState()
+    val urgesRidden by viewModel.urgesRidden.collectAsState()
+    // A second sealed code, opened by the first real milestone.
+    val recordVault = remember { com.evyr.rebuild.data.RecordVault(context) }
+    val recordEarned = remember(allDirectives, streaks) {
+        com.evyr.rebuild.data.RecordVault.earned(allDirectives, streaks)
+    }
+    var showRecordReveal by remember { mutableStateOf(false) }
+    LaunchedEffect(recordEarned) {
+        if (recordVault.isUnlocked(recordEarned) && recordVault.consumeReveal()) showRecordReveal = true
+    }
     // Focus first, then anything missed yesterday (never miss twice), then
     // whatever's tied to where you are now.
     val habitOrder = compareBy<Directive>(
@@ -254,6 +269,8 @@ fun DashboardScreen(
             Spacer(Modifier.height(8.dp))
         }
 
+        AnomalyBanner(anomalies) { a -> acted(); viewModel.clearAnomaly(a.id) }
+
         val zoneTitles = listOf("DAILY", "WEEKLY", "STANDING", "🔥 HARD", "SESSIONS")
         var selectedZone by remember { mutableStateOf(0) }
         var selectedSessionType by remember { mutableStateOf<com.evyr.rebuild.data.SessionType?>(null) }
@@ -312,6 +329,33 @@ fun DashboardScreen(
             ) {
                 when (selectedZone) {
                     0 -> item {
+                        if (routines.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                routines.forEach { r ->
+                                    val steps = r.ids().mapNotNull { id -> (daily + weekly).find { it.id == id } }
+                                        .filter { !it.locked && viewModel.isDueToday(it) }
+                                    val done = steps.count { it.id in completedIds }
+                                    val finished = steps.isNotEmpty() && done == steps.size
+                                    Text(
+                                        (if (finished) "✓ " else "▶ ") + r.name.uppercase() + "  $done/${steps.size}",
+                                        fontFamily = TerminalFontFamily,
+                                        color = if (finished) EvaTextDim else Color.Black,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier
+                                            .background(if (finished) EvaPanelBg else EvaYellow)
+                                            .clickable { onOpenRoutine(r.id) }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
                         // Location objectives for wherever you are right now go first.
                         val dueDaily = daily.filter { viewModel.isDueToday(it) }.sortedWith(habitOrder)
                         val tapTrackers = dueDaily.filter { it.requiredScans > 1 && !it.locked }
@@ -447,6 +491,8 @@ fun DashboardScreen(
                                     slippedToday = streak?.lastSlipDate == today,
                                     slippedYesterday = streak?.lastSlipDate == yesterday,
                                     stats = stats[d.id],
+                                    urgesRidden = urgesRidden[d.id] ?: 0,
+                                    onUrge = { start, outcome -> viewModel.logUrge(d.id, start, outcome) },
                                     onLongPress = { actionTarget = d },
                                     viewModel = viewModel,
                                     onConfirmToday = { acted(); viewModel.confirmStreak(d.id) },
@@ -578,6 +624,34 @@ fun DashboardScreen(
             },
             confirmButton = {
                 TextButton(onClick = { viewModel.consumeMilestone() }) {
+                    Text("ACKNOWLEDGED", fontFamily = TerminalFontFamily, color = EvaGreen, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    if (showRecordReveal && milestones.isEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showRecordReveal = false },
+            containerColor = EvaPanelBg,
+            title = {
+                Text("SEALED FILE OPENED", fontFamily = TerminalFontFamily, color = EvaRed, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            },
+            text = {
+                Column {
+                    Text("MILESTONE REACHED · NEW CODE ACQUIRED", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp, letterSpacing = 2.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        com.evyr.rebuild.data.RecordVault.CODE,
+                        fontFamily = TerminalFontFamily, color = EvaYellow, fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold, letterSpacing = 6.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("Enter it where the other codes go.", fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showRecordReveal = false }) {
                     Text("ACKNOWLEDGED", fontFamily = TerminalFontFamily, color = EvaGreen, fontWeight = FontWeight.Bold)
                 }
             }
@@ -1064,13 +1138,29 @@ private fun StreakRow(
     slippedToday: Boolean = false,
     slippedYesterday: Boolean = false,
     stats: com.evyr.rebuild.data.AppRepository.DirectiveStats? = null,
+    urgesRidden: Int = 0,
+    onUrge: (Long, String) -> Unit = { _, _ -> },
     onLongPress: () -> Unit = {},
     viewModel: MainViewModel,
     onConfirmToday: () -> Unit,
     onBreak: (String?) -> Unit
 ) {
     var showBreakDialog by remember { mutableStateOf(false) }
+    var urgeStart by remember { mutableStateOf<Long?>(null) }
     val days = streak?.currentStreakDays ?: 0
+
+    urgeStart?.let { start ->
+        UrgeDialog(
+            title = directive.title,
+            start = start,
+            onOutcome = { outcome ->
+                onUrge(start, outcome)
+                urgeStart = null
+                if (outcome == "SLIPPED") showBreakDialog = true
+            },
+            onDismiss = { urgeStart = null }
+        )
+    }
 
     // Needs at least 3 recorded breaks before it says anything -- see
     // AppRepository.mostBrokenWeekdayFor. Recomputed when the streak count
@@ -1118,6 +1208,13 @@ private fun StreakRow(
             stats?.takeIf { it.cells.any { c -> c != com.evyr.rebuild.data.AppRepository.DayMark.OFF && c != com.evyr.rebuild.data.AppRepository.DayMark.OPEN } }?.let {
                 com.evyr.rebuild.ui.components.ConsistencyBar(it.cells, Modifier.padding(top = 3.dp))
             }
+            Text(
+                "▸ URGE? RIDE IT OUT" + if (urgesRidden > 0) "  ·  $urgesRidden BEATEN" else "",
+                fontFamily = TerminalFontFamily, color = EvaYellow, fontSize = 11.sp,
+                modifier = Modifier
+                    .clickable { urgeStart = System.currentTimeMillis() }
+                    .padding(top = 4.dp, bottom = 2.dp)
+            )
             breakPattern?.let { (weekday, count) ->
                 Text(
                     text = "BREAKS MOST ON ${WEEKDAY_NAMES.getOrElse(weekday) { "?" }} ($count TIMES)",
@@ -1255,4 +1352,128 @@ private fun HabitLine(stats: com.evyr.rebuild.data.AppRepository.DirectiveStats,
             fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp
         )
     }
+}
+
+/**
+ * The day's surprise challenge, if one showed up: a live countdown with a
+ * CLEARED button, then a one-line record of how it went.
+ */
+@Composable
+private fun AnomalyBanner(anomalies: List<com.evyr.rebuild.data.Anomaly>, onClear: (com.evyr.rebuild.data.Anomaly) -> Unit) {
+    val a = anomalies.firstOrNull() ?: return
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    val live = a.clearedAtEpochMs == null && now < a.expiresAtEpochMs
+    LaunchedEffect(a.id, live) {
+        while (live) {
+            kotlinx.coroutines.delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val name = a.text.substringBefore(":")
+    when {
+        live -> {
+            val left = (a.expiresAtEpochMs - now) / 1000
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .background(EvaRed.copy(alpha = 0.15f))
+                    .border(2.dp, EvaRed)
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "⚠ ANGEL DETECTED · %d:%02d LEFT".format(left / 60, left % 60),
+                        fontFamily = TerminalFontFamily, color = EvaRedLight, fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold, letterSpacing = 1.sp
+                    )
+                    Text(a.text.uppercase(), fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    "CLEARED\n+${a.boost}%",
+                    fontFamily = TerminalFontFamily, color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .background(EvaYellow)
+                        .clickable { onClear(a) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+        }
+        a.clearedAtEpochMs != null -> Text(
+            "✓ $name DOWN · +${a.boost}% SYNC TODAY",
+            fontFamily = TerminalFontFamily, color = EvaGreen, fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+        )
+        else -> Text(
+            "$name ESCAPED",
+            fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+        )
+    }
+}
+
+/**
+ * Urge surfing: urges rise, peak and fall, usually within minutes. A
+ * ten-minute count with something to do while it runs. Riding it out is
+ * logged as a win; a slip goes to the normal slip flow.
+ */
+@Composable
+private fun UrgeDialog(title: String, start: Long, onOutcome: (String) -> Unit, onDismiss: () -> Unit) {
+    val total = 10 * 60_000L
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(start) {
+        while (true) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val elapsed = (now - start).coerceAtLeast(0)
+    val left = ((total - elapsed) / 1000).coerceAtLeast(0)
+    val prompts = listOf(
+        "Notice where you feel it. Just notice.",
+        "It's a wave. It builds, peaks, then drops.",
+        "Breathe out longer than you breathe in.",
+        "You don't have to act on it. Watch it.",
+        "Move. Stand up, walk, change rooms.",
+        "It's already smaller than it was.",
+        "Almost through."
+    )
+    val prompt = prompts[((elapsed / 90_000L).toInt()).coerceIn(0, prompts.size - 1)]
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = EvaPanelBg,
+        title = {
+            Text(
+                if (left == 0L) "IT PASSED" else "RIDE IT OUT",
+                fontFamily = TerminalFontFamily, color = EvaYellow, fontWeight = FontWeight.Bold, letterSpacing = 2.sp
+            )
+        },
+        text = {
+            Column {
+                Text(title.uppercase(), fontFamily = TerminalFontFamily, color = EvaTextDim, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "%d:%02d".format(left / 60, left % 60),
+                    fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 40.sp, fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (left == 0L) "Ten minutes. You rode it out." else prompt,
+                    fontFamily = TerminalFontFamily, color = EvaTextPrimary, fontSize = 13.sp
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onOutcome("RODE_OUT") }) {
+                Text(if (left == 0L) "RODE IT OUT" else "IT'S GONE", fontFamily = TerminalFontFamily, color = EvaGreen, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onOutcome("SLIPPED") }) {
+                Text("SLIPPED", fontFamily = TerminalFontFamily, color = EvaRed)
+            }
+        }
+    )
 }

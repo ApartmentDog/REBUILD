@@ -104,10 +104,10 @@ fun SettingsScreen(
                     placeLabel = d.placeId?.let { placeNames[it] }
                 )
             }
-            // Everything below the directive list is set-and-forget. The list
+            item { RoutinesSection(viewModel = viewModel, directives = listed) }
+            // Everything below here is set-and-forget. The directive list
             // used to be last, under all of it including the debug panels.
             item {
-                Spacer(Modifier.height(8.dp))
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "NOTIFICATIONS",
@@ -115,6 +115,8 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(4.dp))
                 NotificationPrefsPanel(prefs = prefs, onUpdate = viewModel::updateNotificationPrefs)
+                Spacer(Modifier.height(6.dp))
+                SurpriseChallengeToggle()
                 Spacer(Modifier.height(6.dp))
                 BatteryOptimizationField()
 

@@ -178,6 +178,27 @@ class NotificationHelper(private val context: Context) {
         NotificationManagerCompat.from(context).notify(4000 + placeId.toInt(), notification)
     }
 
+    /** A surprise challenge. Dismisses itself when the window closes. */
+    fun showAnomaly(a: com.evyr.rebuild.data.Anomaly) {
+        val minutes = ((a.expiresAtEpochMs - a.spawnedAtEpochMs) / 60_000L).toInt()
+        val notification = NotificationCompat.Builder(context, CHANNEL_GEOFENCE)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("⚠ PATTERN BLUE — ANGEL DETECTED")
+            .setContentText(a.text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("${a.text}\n$minutes minutes. +${a.boost}% Sync Ratio if cleared."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setTimeoutAfter(a.expiresAtEpochMs - System.currentTimeMillis())
+            .setContentIntent(openAppIntent())
+            .addAction(0, "CLEARED", AnomalyScheduler.clearIntent(context, a.id))
+            .build()
+        NotificationManagerCompat.from(context).notify(2003, notification)
+    }
+
+    fun cancelAnomaly() {
+        NotificationManagerCompat.from(context).cancel(2003)
+    }
+
     /** Morning digest: tomorrow's planned first move (set in last night's
      *  check-in), then what's due, focus first. */
     fun showMorningSummary(titles: List<String>, firstMove: String?) {

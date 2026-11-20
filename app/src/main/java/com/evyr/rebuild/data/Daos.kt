@@ -62,6 +62,15 @@ interface CompletionDao {
     @Query("SELECT directiveId, MIN(date) AS first FROM completions GROUP BY directiveId")
     suspend fun firstDates(): List<DirectiveFirst>
 
+    @Query("SELECT COUNT(DISTINCT date) FROM completions")
+    suspend fun distinctDays(): Int
+
+    @Query("SELECT MIN(date) FROM completions")
+    suspend fun firstDate(): String?
+
+    @Query("SELECT COUNT(*) FROM completions")
+    suspend fun total(): Int
+
     @Query("SELECT * FROM completions WHERE directiveId = :directiveId AND source != 'hold' ORDER BY completedAtEpochMs DESC LIMIT :limit")
     suspend fun recentTimed(directiveId: Long, limit: Int): List<Completion>
 
@@ -331,6 +340,9 @@ interface SyncHistoryDao {
 
     @Query("SELECT * FROM sync_history")
     suspend fun getAll(): List<SyncHistoryEntry>
+
+    @Query("SELECT MAX(syncRatioPercent) FROM sync_history")
+    suspend fun best(): Int?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entry: SyncHistoryEntry)

@@ -97,7 +97,12 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         // unlocking one changes what's due (and 🔥 boosts), but the number
         // didn't move until something was ticked.
         viewModelScope.launch {
-            combine(repo.observeCompletionsForToday(), repo.observeStreaks(), repo.observeAllDirectives()) { _, _, _ -> Unit }
+            combine(
+                repo.observeCompletionsForToday(),
+                repo.observeStreaks(),
+                repo.observeAllDirectives(),
+                repo.observeAnomaliesToday()
+            ) { _, _, _, _ -> Unit }
                 .collect { refreshSyncRatio() }
         }
     }
@@ -187,6 +192,34 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
     fun consumeMilestone() { _milestones.value = _milestones.value.drop(1) }
 
     fun dayKeyOffset(offset: Int): String = repo.dayKeyOffset(offset)
+
+    val routines: StateFlow<List<Routine>> = repo.observeRoutines()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun saveRoutine(routine: Routine) {
+        viewModelScope.launch { repo.saveRoutine(routine) }
+    }
+
+    fun deleteRoutine(routine: Routine) {
+        viewModelScope.launch { repo.deleteRoutine(routine) }
+    }
+
+    /** Urges ridden out, per standing directive. */
+    val urgesRidden: StateFlow<Map<Long, Int>> = repo.observeUrgesRidden()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    fun logUrge(directiveId: Long, startedAtEpochMs: Long, outcome: String) {
+        viewModelScope.launch { repo.logUrge(directiveId, startedAtEpochMs, outcome) }
+    }
+
+    val anomaliesToday: StateFlow<List<Anomaly>> = repo.observeAnomaliesToday()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun clearAnomaly(id: Long) {
+        viewModelScope.launch { repo.clearAnomaly(id) }
+    }
+
+    suspend fun serviceRecord() = repo.serviceRecord()
 
     /** The bad-day version: counts for consistency, half weight in Sync. */
     fun completeMinimum(d: Directive) {

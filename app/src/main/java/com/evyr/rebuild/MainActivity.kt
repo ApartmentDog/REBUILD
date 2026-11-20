@@ -20,7 +20,7 @@ import com.evyr.rebuild.ui.MainViewModel
 import com.evyr.rebuild.ui.screens.*
 import com.evyr.rebuild.ui.theme.RebuildTheme
 
-private enum class Screen { LOCK, PERMISSIONS, DAILY_QUOTE, DASHBOARD, NOTEBOOK, SETTINGS, NFC_TAGS, LOCATIONS, GUIDED_SESSIONS, HIDDEN_MEDIA, TAROT_PULL, TAROT_LOG, BOOK_LIBRARY, BOOK_READER, CONFESSION_BOOTH, HOARD, CHECK_IN }
+private enum class Screen { LOCK, PERMISSIONS, DAILY_QUOTE, DASHBOARD, NOTEBOOK, SETTINGS, NFC_TAGS, LOCATIONS, GUIDED_SESSIONS, HIDDEN_MEDIA, TAROT_PULL, TAROT_LOG, BOOK_LIBRARY, BOOK_READER, CONFESSION_BOOTH, HOARD, CHECK_IN, ROUTINE, DOSSIER }
 private enum class NfcStatus { OK, DISABLED, NO_HARDWARE }
 
 // FragmentActivity rather than ComponentActivity: BiometricPrompt requires a
@@ -92,6 +92,7 @@ class MainActivity : FragmentActivity() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             com.evyr.rebuild.notification.ReminderScheduler.rescheduleAll(applicationContext, repo)
             com.evyr.rebuild.notification.DigestScheduler.scheduleAll(applicationContext, repo.getNotificationPrefs())
+            com.evyr.rebuild.notification.AnomalyScheduler.ensureScheduled(applicationContext)
         }
 
         pendingOpen = intent?.getStringExtra(EXTRA_OPEN)
@@ -104,6 +105,7 @@ class MainActivity : FragmentActivity() {
             RebuildTheme {
             com.evyr.rebuild.ui.components.ConsoleFrame {
                 var screen by remember { mutableStateOf(Screen.LOCK) }
+                var routineId by remember { mutableStateOf(-1L) }
                 LaunchedEffect(screen, pendingOpen) {
                     if (screen == Screen.DASHBOARD && pendingOpen == OPEN_CHECKIN) {
                         pendingOpen = null
@@ -191,6 +193,7 @@ class MainActivity : FragmentActivity() {
                     Screen.DASHBOARD -> DashboardScreen(
                         viewModel = viewModel,
                         onOpenCheckIn = { screen = Screen.CHECK_IN },
+                        onOpenRoutine = { id -> routineId = id; screen = Screen.ROUTINE },
                         nfcDisabled = nfcStatus != NfcStatus.OK,
                         nfcUnavailableReason = if (nfcStatus == NfcStatus.NO_HARDWARE) "No NFC hardware on this device" else "NFC is turned off — enable it in system settings",
                         onOpenSecretPrompt = { showCheatCodeDialog = true },
@@ -271,6 +274,15 @@ class MainActivity : FragmentActivity() {
                         onBack = { screen = Screen.DASHBOARD }
                     )
                     Screen.CHECK_IN -> CheckInScreen(
+                        viewModel = viewModel,
+                        onBack = { screen = Screen.DASHBOARD }
+                    )
+                    Screen.ROUTINE -> RoutineRunnerScreen(
+                        viewModel = viewModel,
+                        routineId = routineId,
+                        onBack = { screen = Screen.DASHBOARD }
+                    )
+                    Screen.DOSSIER -> PersonnelFileScreen(
                         viewModel = viewModel,
                         onBack = { screen = Screen.DASHBOARD }
                     )
@@ -363,6 +375,17 @@ class MainActivity : FragmentActivity() {
                                         screen = Screen.HOARD
                                     } else {
                                         cheatCodeError = "SEALED · ${cleared.coerceAtMost(com.evyr.rebuild.data.HardModeVault.REQUIRED)} / ${com.evyr.rebuild.data.HardModeVault.REQUIRED} 🔥"
+                                    }
+                                } else if (entered.equals(com.evyr.rebuild.data.RecordVault.CODE, ignoreCase = true)) {
+                                    val earned = com.evyr.rebuild.data.RecordVault.earned(
+                                        viewModel.allDirectives.value, viewModel.streaks.value
+                                    )
+                                    if (com.evyr.rebuild.data.RecordVault(applicationContext).isUnlocked(earned)) {
+                                        showCheatCodeDialog = false
+                                        cheatCodeError = null
+                                        screen = Screen.DOSSIER
+                                    } else {
+                                        cheatCodeError = "SEALED"
                                     }
                                 } else {
                                     cheatCodeError = "wrong"
