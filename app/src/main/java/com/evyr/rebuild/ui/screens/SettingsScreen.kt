@@ -118,6 +118,8 @@ fun SettingsScreen(
                 Spacer(Modifier.height(6.dp))
                 SurpriseChallengeToggle()
                 Spacer(Modifier.height(6.dp))
+                HealthConnectSection(directives = listed)
+                Spacer(Modifier.height(6.dp))
                 BatteryOptimizationField()
 
                 Spacer(Modifier.height(16.dp))

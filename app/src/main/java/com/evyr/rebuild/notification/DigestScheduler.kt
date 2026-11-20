@@ -72,6 +72,7 @@ class DigestReceiver : BroadcastReceiver() {
                 // Re-arm first so a failure below can't break the daily cycle.
                 DigestScheduler.scheduleAll(appContext, prefs)
 
+                com.evyr.rebuild.data.HealthSync.syncToday(appContext, repo)
                 val open = repo.openDailyDirectivesToday()
                     .sortedByDescending { it.focus }
                     .map { (if (it.focus) "◆ " else "") + it.title }

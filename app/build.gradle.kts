@@ -123,6 +123,9 @@ dependencies {
     // graph. Without this declared, that stub wins and the real class vanishes.
     implementation("com.google.guava:guava:33.7.1-android")
 
+    // Health Connect: reads exercise sessions to tick the workout directive.
+    implementation("androidx.health.connect:connect-client:1.1.0")
+
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
     // Image loading for local file paths (media attachments)

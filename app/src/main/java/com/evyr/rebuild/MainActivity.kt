@@ -416,6 +416,13 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // A workout logged in Samsung Health since the last look ticks the
+        // linked directive (no-op unless one is linked and access is granted).
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            com.evyr.rebuild.data.HealthSync.syncToday(
+                applicationContext, AppRepository(RebuildDatabase.getInstance(applicationContext))
+            )
+        }
         nfcStatus = computeNfcStatus()
         nfcHelper.enableForegroundDispatch(this)
     }

@@ -2,6 +2,7 @@ package com.evyr.rebuild.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -179,5 +180,78 @@ fun SurpriseChallengeToggle() {
             },
             colors = SwitchDefaults.colors(checkedTrackColor = NervOrange)
         )
+    }
+}
+
+/** Settings: link one directive to workouts logged in Health Connect. */
+@Composable
+fun HealthConnectSection(directives: List<Directive>) {
+    val context = LocalContext.current
+    val available = remember { com.evyr.rebuild.data.HealthSync.isAvailable(context) }
+    var granted by remember { mutableStateOf(false) }
+    var linked by remember { mutableStateOf(com.evyr.rebuild.data.HealthSync.linkedDirective(context)) }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
+    ) { got -> granted = got.containsAll(com.evyr.rebuild.data.HealthSync.PERMISSIONS) }
+    LaunchedEffect(available) {
+        if (available) granted = com.evyr.rebuild.data.HealthSync.hasPermission(context)
+    }
+    val candidates = directives.filter { it.zone == Zone.DAILY || it.zone == Zone.WEEKLY }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(NervPanel, RoundedCornerShape(4.dp))
+            .padding(12.dp)
+    ) {
+        Text("WORKOUTS FROM HEALTH CONNECT", fontFamily = TerminalFontFamily, color = NervGreen, fontSize = 12.sp)
+        if (!available) {
+            Text(
+                "Health Connect isn't available on this phone.",
+                fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
+            )
+            return@Column
+        }
+        Text(
+            "A workout of ${com.evyr.rebuild.data.HealthSync.MIN_MINUTES}+ minutes logged in Samsung Health ticks the directive you pick. Read-only.",
+            fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp
+        )
+        Spacer(Modifier.height(6.dp))
+        if (granted) {
+            Text("ACCESS GRANTED", fontFamily = TerminalFontFamily, color = EvaGreen, fontSize = 11.sp)
+        } else {
+            Text(
+                "ALLOW ACCESS",
+                fontFamily = TerminalFontFamily, color = NervBackground, fontSize = 11.sp,
+                modifier = Modifier
+                    .background(NervOrange, RoundedCornerShape(6.dp))
+                    .clickable { runCatching { launcher.launch(com.evyr.rebuild.data.HealthSync.PERMISSIONS) } }
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("TICKS", fontFamily = TerminalFontFamily, color = NervDim, fontSize = 11.sp, letterSpacing = 1.sp)
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            (listOf<Directive?>(null) + candidates).forEach { d ->
+                val on = linked == d?.id
+                Text(
+                    d?.title?.uppercase() ?: "NOTHING",
+                    fontFamily = TerminalFontFamily,
+                    color = if (on) NervBackground else NervGreen,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .background(if (on) NervOrange else NervPanelBorder, RoundedCornerShape(6.dp))
+                        .clickable {
+                            linked = d?.id
+                            com.evyr.rebuild.data.HealthSync.setLinkedDirective(context, d?.id)
+                        }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+        }
     }
 }
